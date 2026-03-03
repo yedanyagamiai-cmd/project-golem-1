@@ -16,7 +16,7 @@ export default function DashboardLayout({
 
     const navItems = [
         { name: "戰術控制台", href: "/dashboard", icon: LayoutDashboard },
-        { name: "系統終端機", href: "/dashboard/terminal", icon: Terminal },
+        { name: "終端機控制台", href: "/dashboard/terminal", icon: Terminal },
         { name: "Agent 會議室", href: "/dashboard/agents", icon: Users },
         { name: "辦公室模式", href: "/dashboard/office", icon: Users },
     ];

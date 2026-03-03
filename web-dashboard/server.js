@@ -45,22 +45,32 @@ class WebServer {
     }
 
     init() {
-        // Serve static files
+        // Serve static files with .html extension support
         const publicPath = path.join(__dirname, 'out');
-        this.app.use(express.static(publicPath));
+        this.app.use(express.static(publicPath, { extensions: ['html'] }));
 
         // Fix Next.js static export routing
         this.app.get('/', (req, res) => {
             res.redirect('/dashboard');
         });
-        this.app.get('/dashboard', (req, res) => {
+
+        // Ensure /dashboard and sub-routes are handled for SPA
+        const dashboardRoutes = ['/dashboard', '/dashboard/terminal', '/dashboard/agents', '/dashboard/office'];
+        dashboardRoutes.forEach(route => {
+            this.app.get(route, (req, res) => {
+                const fileName = route === '/dashboard' ? 'dashboard.html' : `${route.replace(/^\//, '')}.html`;
+                const fullPath = path.join(publicPath, fileName);
+                if (fs.existsSync(fullPath)) {
+                    res.sendFile(fullPath);
+                } else {
+                    res.sendFile(path.join(publicPath, 'dashboard.html'));
+                }
+            });
+        });
+
+        // Catch-all fallback for any other /dashboard/* routes
+        this.app.get(/\/dashboard\/.*/, (req, res) => {
             res.sendFile(path.join(publicPath, 'dashboard.html'));
-        });
-        this.app.get('/dashboard/agents', (req, res) => {
-            res.sendFile(path.join(publicPath, 'dashboard', 'agents.html'));
-        });
-        this.app.get('/dashboard/office', (req, res) => {
-            res.sendFile(path.join(publicPath, 'dashboard', 'office.html'));
         });
 
 
