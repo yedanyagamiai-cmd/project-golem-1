@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { BookOpen, AlertCircle, CheckCircle2, RefreshCcw, ChevronRight, FileJson } from "lucide-react";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { BookOpen, AlertCircle, CheckCircle2, RefreshCcw, ChevronRight, Power } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -47,6 +47,29 @@ export default function SkillsPage() {
         } catch (e) {
             console.error("Hot reload failed:", e);
             setIsReloading(false);
+        }
+    };
+
+    const handleToggleSkill = async (skill: Skill) => {
+        if (!skill.isOptional) return;
+
+        // Optimistic UI update
+        const newEnabledState = !skill.isEnabled;
+        setSkills(prev => prev.map(s => s.id === skill.id ? { ...s, isEnabled: newEnabledState } : s));
+        if (selectedSkill?.id === skill.id) {
+            setSelectedSkill({ ...selectedSkill, isEnabled: newEnabledState });
+        }
+
+        try {
+            await fetch("/api/skills/toggle", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: skill.id, enabled: newEnabledState })
+            });
+        } catch (e) {
+            console.error("Toggle failed", e);
+            // Revert on failure
+            loadSkills();
         }
     };
 
@@ -133,15 +156,26 @@ export default function SkillsPage() {
                 <div className="lg:col-span-2 flex flex-col min-h-0">
                     <Card className="flex-1 flex flex-col bg-black border-gray-800 overflow-hidden relative group">
                         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                        <CardHeader className="py-3 px-4 border-b border-gray-900 bg-gray-950 font-mono text-xs flex flex-row items-center justify-between">
-                            <span className="text-gray-400">
+                        <CardHeader className="py-3 px-4 border-b border-gray-900 bg-gray-950 font-mono flex flex-row items-center justify-between">
+                            <span className="text-gray-400 text-xs">
                                 root@golem:~# cat /src/skills/lib/{selectedSkill?.id || '*'}.md
                             </span>
-                            {selectedSkill && (
-                                <span className={`px-2 py-0.5 rounded text-[10px] ${selectedSkill.isEnabled ? 'bg-green-950 text-green-400' : 'bg-gray-800 text-gray-400'}`}>
-                                    {selectedSkill.isEnabled ? 'ACTIVE' : 'INACTIVE'}
-                                </span>
-                            )}
+                            <div className="flex items-center gap-3">
+                                {selectedSkill && (
+                                    <span className={`px-2 py-0.5 rounded text-[10px] ${selectedSkill.isEnabled ? 'bg-green-950 text-green-400' : 'bg-gray-800 text-gray-400'}`}>
+                                        {selectedSkill.isEnabled ? 'ACTIVE' : 'INACTIVE'}
+                                    </span>
+                                )}
+                                {selectedSkill?.isOptional && (
+                                    <button
+                                        onClick={() => handleToggleSkill(selectedSkill)}
+                                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${selectedSkill.isEnabled ? 'bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.6)]' : 'bg-gray-700'}`}
+                                    >
+                                        <span className="sr-only">Toggle skill</span>
+                                        <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${selectedSkill.isEnabled ? 'translate-x-2' : '-translate-x-2'}`} />
+                                    </button>
+                                )}
+                            </div>
                         </CardHeader>
                         <CardContent className="flex-1 p-0 overflow-y-auto custom-scrollbar relative">
                             {selectedSkill ? (

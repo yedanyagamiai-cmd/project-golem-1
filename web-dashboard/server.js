@@ -121,6 +121,56 @@ class WebServer {
             }
         });
 
+        this.app.post('/api/skills/toggle', (req, res) => {
+            try {
+                const { id, enabled } = req.body;
+                if (!id) return res.status(400).json({ error: "Missing skill ID" });
+
+                const ALL_OPTIONAL_SKILLS = ['git', 'image-prompt', 'moltbot', 'spotify', 'youtube'];
+                if (!ALL_OPTIONAL_SKILLS.includes(id)) {
+                    return res.status(400).json({ error: "Cannot toggle core system skills" });
+                }
+
+                // 1. Update in-memory
+                let currentStr = process.env.OPTIONAL_SKILLS || '';
+                let currentSkills = currentStr.split(',').map(s => s.trim().toLowerCase()).filter(s => s !== '');
+
+                if (enabled && !currentSkills.includes(id)) {
+                    currentSkills.push(id);
+                } else if (!enabled && currentSkills.includes(id)) {
+                    currentSkills = currentSkills.filter(s => s !== id);
+                }
+
+                const newSkillsStr = currentSkills.join(',');
+                process.env.OPTIONAL_SKILLS = newSkillsStr;
+
+                // 2. Persist to .env
+                const envPath = path.resolve(process.cwd(), '../.env'); // web-dashboard is in a subfolder
+                if (fs.existsSync(envPath)) {
+                    let envContent = fs.readFileSync(envPath, 'utf8');
+
+                    // Regex to find OPTIONAL_SKILLS=... and replace it
+                    const regex = /^OPTIONAL_SKILLS=.*$/m;
+                    if (regex.test(envContent)) {
+                        envContent = envContent.replace(regex, `OPTIONAL_SKILLS=${newSkillsStr}`);
+                    } else {
+                        envContent += `\nOPTIONAL_SKILLS=${newSkillsStr}\n`;
+                    }
+                    fs.writeFileSync(envPath, envContent, 'utf8');
+                    console.log(`📝 [System] Saved new skill config to .env: ${newSkillsStr}`);
+                }
+
+                // 3. Clear Cache (Hot Reload)
+                const ProtocolFormatter = require('../src/services/ProtocolFormatter');
+                ProtocolFormatter._lastScanTime = 0;
+
+                return res.json({ success: true, enabled, skillsStr: newSkillsStr });
+            } catch (e) {
+                console.error("Failed to toggle skill:", e);
+                return res.status(500).json({ error: e.message });
+            }
+        });
+
         this.app.post('/api/skills/reload', (req, res) => {
             try {
                 console.log("🔄 [WebServer] Hot-reloading skills... Clearing ProtocolFormatter cache.");
