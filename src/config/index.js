@@ -97,6 +97,59 @@ const LOG_BASE_DIR = path.join(process.cwd(), 'logs', MODE_DIR);
 const MEMORY_BASE_DIR = path.resolve(CONFIG.USER_DATA_DIR || './golem_memory', MODE_DIR);
 const KNOWLEDGE_BASE_DIR = path.join(process.cwd(), 'golem_memory', MODE_DIR, 'knowledge');
 
+// 🔄 熱重載支援函數
+const reloadConfig = () => {
+    // 重新載入 .env
+    require('dotenv').config({ override: true });
+
+    // 重新整理變數到 CONFIG
+    CONFIG.TG_TOKEN = cleanEnv(process.env.TELEGRAM_TOKEN);
+    CONFIG.TG_AUTH_MODE = cleanEnv(process.env.TG_AUTH_MODE) || 'ADMIN';
+    CONFIG.TG_CHAT_ID = cleanEnv(process.env.TG_CHAT_ID);
+    CONFIG.DC_TOKEN = cleanEnv(process.env.DISCORD_TOKEN);
+    CONFIG.USER_DATA_DIR = cleanEnv(process.env.USER_DATA_DIR || './golem_memory', true);
+
+    // 更新陣列 (Mutate in-place 以利 reference 共用)
+    const newApiKeys = (process.env.GEMINI_API_KEYS || '').split(',').map(k => cleanEnv(k)).filter(k => k && !isPlaceholder(k));
+    CONFIG.API_KEYS.length = 0;
+    CONFIG.API_KEYS.push(...newApiKeys);
+
+    CONFIG.ADMIN_ID = cleanEnv(process.env.ADMIN_ID);
+    CONFIG.DISCORD_ADMIN_ID = cleanEnv(process.env.DISCORD_ADMIN_ID);
+
+    const newAdminIds = [process.env.ADMIN_ID, process.env.DISCORD_ADMIN_ID].map(k => cleanEnv(k)).filter(k => k);
+    CONFIG.ADMIN_IDS.length = 0;
+    CONFIG.ADMIN_IDS.push(...newAdminIds);
+
+    CONFIG.GITHUB_REPO = cleanEnv(process.env.GITHUB_REPO || 'https://raw.githubusercontent.com/Arvincreator/project-golem/main/', true);
+    CONFIG.QMD_PATH = cleanEnv(process.env.GOLEM_QMD_PATH || 'qmd', true);
+    CONFIG.TZ = cleanEnv(process.env.TZ) || 'Asia/Taipei';
+    CONFIG.INTERVENTION_LEVEL = cleanEnv(process.env.GOLEM_INTERVENTION_LEVEL) || 'CONSERVATIVE';
+
+    // 重新載入 GOLEMS_CONFIG (僅在存在 golems.json 時)
+    const golemsJsonPath = path.join(process.cwd(), 'golems.json');
+    if (fs.existsSync(golemsJsonPath)) {
+        try {
+            const newGolemsConfig = JSON.parse(fs.readFileSync(golemsJsonPath, 'utf8'));
+            // 確保 ID 唯一
+            const seenIds = new Set();
+            const validGolems = newGolemsConfig.filter(g => {
+                if (!g.id) return false;
+                if (seenIds.has(g.id)) return false;
+                seenIds.add(g.id);
+                return true;
+            });
+            // In-place replace array so references hold
+            GOLEMS_CONFIG.length = 0;
+            GOLEMS_CONFIG.push(...validGolems);
+        } catch (e) {
+            console.error("❌ [Config] 熱重載 golems.json 失敗:", e.message);
+        }
+    }
+
+    console.log(`🔄 [Config] 設定已熱重載完成 (Active API Keys: ${CONFIG.API_KEYS.length}, Golems: ${GOLEMS_CONFIG.length})`);
+};
+
 module.exports = {
     cleanEnv,
     isPlaceholder,
@@ -106,5 +159,6 @@ module.exports = {
     MODE_DIR,
     LOG_BASE_DIR,
     MEMORY_BASE_DIR,
-    KNOWLEDGE_BASE_DIR
+    KNOWLEDGE_BASE_DIR,
+    reloadConfig
 };

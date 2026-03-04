@@ -73,6 +73,97 @@ class WebServer {
 
 
         // --- API Routes ---
+
+        // Config API (Settings Page)
+        this.app.get('/api/config', (req, res) => {
+            try {
+                const EnvManager = require('../src/utils/EnvManager');
+                const envData = EnvManager.readEnv();
+                const golemsData = EnvManager.readGolemsJson();
+
+                // We return all properties so the frontend can display them.
+                return res.json({ env: envData, golems: golemsData });
+            } catch (e) {
+                console.error("Failed to read config:", e);
+                return res.status(500).json({ error: e.message });
+            }
+        });
+
+        this.app.post('/api/config', (req, res) => {
+            try {
+                const { env: envPayload, golems: golemsPayload } = req.body;
+
+                if (!envPayload || typeof envPayload !== 'object') {
+                    return res.status(400).json({ error: "Invalid env payload" });
+                }
+
+                const EnvManager = require('../src/utils/EnvManager');
+                const ConfigManager = require('../src/config/index');
+
+                // 1. 寫入 .env 檔案 與 golems.json
+                const envUpdated = EnvManager.updateEnv(envPayload);
+                let golemsUpdated = false;
+
+                if (golemsPayload && Array.isArray(golemsPayload)) {
+                    golemsUpdated = EnvManager.updateGolemsJson(golemsPayload);
+                }
+
+                if (envUpdated || golemsUpdated) {
+                    console.log(`📝 [System] Saved new config. env updated: ${envUpdated}, golems updated: ${golemsUpdated}`);
+
+                    // 2. 觸發熱重載
+                    ConfigManager.reloadConfig();
+
+                    // 3. 通知特定服務重載其對應的配置
+                    if (envPayload.GEMINI_API_KEYS !== undefined) {
+                        try {
+                            const { CONFIG } = require('../src/config/index');
+                            // 尋找運行中的 Golems 並通知 KeyChain
+                            // 由於架構上 Golem 的 keyChain 是實體化的，我們需要從 context 拿
+                            for (const [id, context] of this.contexts.entries()) {
+                                if (context.brain && context.brain.keyChain) {
+                                    context.brain.keyChain.updateKeys(CONFIG.API_KEYS);
+                                    console.log(`🔄 [System] Successfully injected new API Keys into Golem [${id}]`);
+                                }
+                            }
+                        } catch (e) {
+                            console.error("Failed to notify Golem KeyChains:", e.message);
+                        }
+                    }
+
+                    // 熱重載每個實體的 Admin ID (從 GOLEMS_CONFIG 讀取最新的設定)
+                    if (golemsUpdated) {
+                        try {
+                            const { GOLEMS_CONFIG } = require('../src/config/index');
+                            for (const [id, context] of this.contexts.entries()) {
+                                if (context.brain) {
+                                    const configForBrain = GOLEMS_CONFIG.find(g => g.id === id);
+                                    if (configForBrain && configForBrain.adminId !== undefined) {
+                                        // Update the golem's specific config
+                                        if (!context.brain.config) context.brain.config = {};
+                                        context.brain.config.adminId = configForBrain.adminId;
+                                        context.brain.config.chatId = configForBrain.chatId;
+                                        context.brain.config.tgAuthMode = configForBrain.tgAuthMode;
+                                        console.log(`🔄 [System] Successfully updated permissions for Golem [${id}]`);
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.error("Failed to hot reload multi golem configs:", e.message)
+                        }
+                    }
+
+                    return res.json({ success: true, message: "Settings saved successfully" });
+                }
+
+                return res.json({ success: false, message: "No changes detected" });
+            } catch (e) {
+                console.error("Failed to update config:", e);
+                return res.status(500).json({ error: e.message });
+            }
+        });
+
+
         this.app.get('/api/skills', async (req, res) => {
             try {
                 const libPath = path.join(process.cwd(), 'src', 'skills', 'lib');
@@ -179,6 +270,48 @@ class WebServer {
                 return res.json({ success: true, message: "Skills cache cleared" });
             } catch (e) {
                 console.error("Failed to reload skills cache:", e);
+                return res.status(500).json({ error: e.message });
+            }
+        });
+
+        // 🚀 技能注入：重新組裝技能書並送進 Gemini
+        this.app.post('/api/skills/inject', async (req, res) => {
+            try {
+                // 1. 先清除 ProtocolFormatter 快取，確保讀到最新的技能清單
+                const ProtocolFormatter = require('../src/services/ProtocolFormatter');
+                ProtocolFormatter._lastScanTime = 0;
+
+                // 2. 對每個運行中的 Golem Brain 呼叫 reloadSkills()
+                const results = [];
+                for (const [id, context] of this.contexts.entries()) {
+                    if (context.brain && typeof context.brain.reloadSkills === 'function') {
+                        try {
+                            console.log(`⚡ [WebServer] Injecting skills into Golem [${id}]...`);
+                            await context.brain.reloadSkills();
+                            results.push({ id, status: 'success' });
+                        } catch (e) {
+                            console.error(`❌ [WebServer] Failed to inject skills into Golem [${id}]:`, e.message);
+                            results.push({ id, status: 'error', error: e.message });
+                        }
+                    } else {
+                        results.push({ id, status: 'skipped', error: 'Brain not ready or reloadSkills not available' });
+                    }
+                }
+
+                if (results.length === 0) {
+                    return res.status(503).json({ success: false, message: "No active Golem instances found" });
+                }
+
+                const allSuccess = results.every(r => r.status === 'success');
+                return res.json({
+                    success: allSuccess,
+                    message: allSuccess
+                        ? `技能書已成功注入 ${results.length} 個 Golem 實體`
+                        : `部分注入失敗`,
+                    results
+                });
+            } catch (e) {
+                console.error("Failed to inject skills:", e);
                 return res.status(500).json({ error: e.message });
             }
         });

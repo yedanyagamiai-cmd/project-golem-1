@@ -302,6 +302,23 @@ class GolemBrain {
     }
 
     /**
+     * 🔄 對外公開：重新組裝技能書並注入 Gemini（不含歷史日誌回放）
+     * 供 Dashboard 的「注入技能書」按鈕使用
+     */
+    async reloadSkills() {
+        let { systemPrompt, skillMemoryText } = await ProtocolFormatter.buildSystemPrompt(true, { userDataDir: this.userDataDir });
+
+        if (skillMemoryText) {
+            await this.memorize(skillMemoryText, { type: 'system_skills', source: 'dashboard_reload' });
+            console.log(`🧠 [Memory] 已成功將技能載入長期記憶中！(Dashboard 觸發)`);
+        }
+
+        const compressedPrompt = ProtocolFormatter.compress(systemPrompt);
+        await this.sendMessage(compressedPrompt, false);
+        console.log(`📡 [Brain] 技能書已重新注入 Gemini (Dashboard 觸發)。`);
+    }
+
+    /**
      * 組裝並發送系統 Prompt
      * @param {boolean} [forceRefresh=false]
      */

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
-import { BookOpen, AlertCircle, CheckCircle2, RefreshCcw, ChevronRight, Power } from "lucide-react";
+import { BookOpen, AlertCircle, CheckCircle2, RefreshCcw, ChevronRight, Power, Zap } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -18,7 +18,10 @@ export default function SkillsPage() {
     const [skills, setSkills] = useState<Skill[]>([]);
     const [loading, setLoading] = useState(true);
     const [isReloading, setIsReloading] = useState(false);
+    const [isInjecting, setIsInjecting] = useState(false);
     const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
+    const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error' | 'info', text: string } | null>(null);
+    const [hasUnsyncedChanges, setHasUnsyncedChanges] = useState(false);
 
     const loadSkills = () => {
         setLoading(true);
@@ -66,10 +69,32 @@ export default function SkillsPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ id: skill.id, enabled: newEnabledState })
             });
+            setHasUnsyncedChanges(true);
+            setStatusMsg({ type: 'info', text: `已${newEnabledState ? '啟用' : '停用'} ${skill.title}。點擊「注入技能書」將變更推送至 Gemini。` });
         } catch (e) {
             console.error("Toggle failed", e);
             // Revert on failure
             loadSkills();
+        }
+    };
+
+    const handleInjectSkills = async () => {
+        if (!confirm("確認要將目前的技能配置重新注入到 Gemini 嗎？\n這會向 Gemini 發送一輪完整的技能書訊息。")) return;
+        setIsInjecting(true);
+        setStatusMsg(null);
+        try {
+            const res = await fetch("/api/skills/inject", { method: "POST" });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setStatusMsg({ type: 'success', text: data.message || '技能書已成功注入！' });
+                setHasUnsyncedChanges(false);
+            } else {
+                setStatusMsg({ type: 'error', text: data.message || data.error || '注入失敗' });
+            }
+        } catch (e) {
+            setStatusMsg({ type: 'error', text: '注入請求發送失敗' });
+        } finally {
+            setIsInjecting(false);
         }
     };
 
@@ -92,7 +117,19 @@ export default function SkillsPage() {
                         <span className="text-xs font-normal">Hot Reload</span>
                     </button>
                 </h1>
-                <div className="flex space-x-2">
+                <div className="flex items-center space-x-2">
+                    <button
+                        onClick={handleInjectSkills}
+                        disabled={isInjecting}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5 transition-all ${hasUnsyncedChanges
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500/30 animate-pulse'
+                                : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/20'
+                            } ${isInjecting ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        title="將目前啟用的技能配置重新注入到 Gemini"
+                    >
+                        <Zap className={`w-4 h-4 ${isInjecting ? 'animate-pulse' : ''}`} />
+                        {isInjecting ? '注入中...' : '注入技能書'}
+                    </button>
                     <span className="px-3 py-1 bg-gray-900/50 text-gray-400 text-xs rounded-full border border-gray-800">
                         Total Modules: {skills.length}
                     </span>
@@ -101,6 +138,19 @@ export default function SkillsPage() {
                     </span>
                 </div>
             </div>
+
+            {/* Status Message */}
+            {statusMsg && (
+                <div className={`px-4 py-3 rounded-lg flex items-center gap-2 text-sm border ${statusMsg.type === 'success' ? 'bg-green-950/30 border-green-900/50 text-green-400' :
+                        statusMsg.type === 'info' ? 'bg-blue-950/30 border-blue-900/50 text-blue-400' :
+                            'bg-red-950/30 border-red-900/50 text-red-400'
+                    }`}>
+                    {statusMsg.type === 'success' && <CheckCircle2 className="w-4 h-4 shrink-0" />}
+                    {statusMsg.type === 'info' && <AlertCircle className="w-4 h-4 shrink-0" />}
+                    {statusMsg.type === 'error' && <AlertCircle className="w-4 h-4 shrink-0" />}
+                    <p>{statusMsg.text}</p>
+                </div>
+            )}
 
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-0">
                 {/* Left Panel: Skill List */}

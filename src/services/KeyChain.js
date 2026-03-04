@@ -76,6 +76,20 @@ class KeyChain {
         }
         return cooling.length > 0 ? cooling.join(', ') : '全部可用';
     }
+
+    /**
+     * 支援熱重載，動態注入新 Keys
+     * @param {Array<string>} newKeys 
+     */
+    updateKeys(newKeys) {
+        if (!Array.isArray(newKeys)) return;
+        this.keys = newKeys;
+        this.currentIndex = 0; // 重置 index 起點
+        this._cooldownUntil.clear(); // 清除舊的冷卻狀態
+        this._stats.clear(); // 清除舊統計
+        this.keys.forEach(k => this._stats.set(k, { calls: 0, errors: 0, lastUsed: 0 }));
+        console.log(`🔄 [KeyChain] Keys 已動態更新，目前共 ${this.keys.length} 把 API Key。`);
+    }
 }
 
 module.exports = KeyChain;
