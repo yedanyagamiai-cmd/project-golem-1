@@ -125,7 +125,8 @@ class AutonomyManager {
                 const adminCtx = await this.getAdminContext();
                 const prompt = `【⏰ 系統排程觸發】\n時間：${task.time}\n任務內容：${task.task}\n\n請根據任務內容，主動向使用者發送訊息或執行操作。`;
                 if (this.convoManager) {
-                    await this.convoManager.enqueue(adminCtx, prompt);
+                    // 🚀 ✨ [v9.0.8] Priority VIP Bypass: Do not debounce, insert directly at front of queue.
+                    await this.convoManager.enqueue(adminCtx, prompt, { isPriority: true, bypassDebounce: true });
                 }
             }
         }

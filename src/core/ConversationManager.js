@@ -18,8 +18,16 @@ class ConversationManager {
         this.DEBOUNCE_MS = 1500;
     }
 
-    async enqueue(ctx, text) {
+    async enqueue(ctx, text, options = { isPriority: false, bypassDebounce: false }) {
         const chatId = ctx.chatId;
+
+        // 🚨 Highest Privilege: priority tasks bypass user buffers completely and inject straight into queue
+        if (options.bypassDebounce) {
+            console.log(`⚡ [Queue] 高優先級請求繞過防抖機制 (${chatId}): "${text.substring(0, 15)}..."`);
+            this._commitDirectly(ctx, text, options.isPriority);
+            return;
+        }
+
         let userState = this.userBuffers.get(chatId) || { text: "", timer: null, ctx: ctx };
         userState.text = userState.text ? `${userState.text}\n${text}` : text;
         userState.ctx = ctx;
@@ -31,15 +39,23 @@ class ConversationManager {
         this.userBuffers.set(chatId, userState);
     }
 
+    _commitDirectly(ctx, text, isPriority) {
+        console.log(`📦 [Queue] 訊息封包完成 (Direct) ${isPriority ? '[插隊 VIP]' : ''}，加入隊列。`);
+        if (isPriority) {
+            this.queue.unshift({ ctx, text }); // Priority goes to the front of the line
+        } else {
+            this.queue.push({ ctx, text });
+        }
+        this._processQueue();
+    }
+
     _commitToQueue(chatId) {
         const userState = this.userBuffers.get(chatId);
         if (!userState || !userState.text) return;
         const fullText = userState.text;
         const currentCtx = userState.ctx;
         this.userBuffers.delete(chatId);
-        console.log(`📦 [Queue] 訊息封包完成 (${chatId})，加入隊列。`);
-        this.queue.push({ ctx: currentCtx, text: fullText });
-        this._processQueue();
+        this._commitDirectly(currentCtx, fullText, false);
     }
 
     async _processQueue() {
