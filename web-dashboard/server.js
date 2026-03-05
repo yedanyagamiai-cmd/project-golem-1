@@ -178,7 +178,7 @@ class WebServer {
                 const skillsData = files.map(file => {
                     const content = fs.readFileSync(path.join(libPath, file), 'utf8');
                     const baseName = file.replace('.md', '').toLowerCase();
-                    const isOptional = OPTIONAL_SKILL_LIST.includes(baseName);
+                    const isOptional = !MANDATORY_SKILLS.includes(baseName);
                     const isEnabled = enabledSkills.has(baseName);
 
                     // Extract first line or generic title
@@ -262,6 +262,60 @@ class WebServer {
                 return res.json({ success: true, enabled, skillsStr: newSkillsStr });
             } catch (e) {
                 console.error("Failed to toggle skill:", e);
+                return res.status(500).json({ error: e.message });
+            }
+        });
+
+        // ➕ 新增技能 API
+        this.app.post('/api/skills/create', (req, res) => {
+            try {
+                const { id, content } = req.body;
+                if (!id || !content) return res.status(400).json({ error: 'Missing id or content' });
+
+                const safeId = id.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+                if (MANDATORY_SKILLS.includes(safeId)) {
+                    return res.status(400).json({ error: `Cannot overwrite mandatory skill '${safeId}'` });
+                }
+
+                const libPath = path.join(process.cwd(), 'src', 'skills', 'lib');
+                const filePath = path.join(libPath, `${safeId}.md`);
+
+                if (fs.existsSync(filePath)) {
+                    return res.status(409).json({ error: `Skill '${safeId}' already exists` });
+                }
+
+                fs.writeFileSync(filePath, content, 'utf8');
+                console.log(`✨ [WebServer] Custom skill created: ${safeId}.md`);
+                return res.json({ success: true, id: safeId });
+            } catch (e) {
+                console.error('Failed to create skill:', e);
+                return res.status(500).json({ error: e.message });
+            }
+        });
+
+        // ✏️ 更新技能 API
+        this.app.post('/api/skills/update', (req, res) => {
+            try {
+                const { id, content } = req.body;
+                if (!id || !content) return res.status(400).json({ error: 'Missing id or content' });
+
+                const safeId = id.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+                if (MANDATORY_SKILLS.includes(safeId)) {
+                    return res.status(403).json({ error: `Cannot edit mandatory skill '${safeId}'` });
+                }
+
+                const libPath = path.join(process.cwd(), 'src', 'skills', 'lib');
+                const filePath = path.join(libPath, `${safeId}.md`);
+
+                if (!fs.existsSync(filePath)) {
+                    return res.status(404).json({ error: `Skill '${safeId}' not found` });
+                }
+
+                fs.writeFileSync(filePath, content, 'utf8');
+                console.log(`📝 [WebServer] Custom skill updated: ${safeId}.md`);
+                return res.json({ success: true, id: safeId });
+            } catch (e) {
+                console.error('Failed to update skill:', e);
                 return res.status(500).json({ error: e.message });
             }
         });

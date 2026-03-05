@@ -45,7 +45,7 @@ function resolveEnabledSkills(optionalEnv = '', personaSkills = []) {
 
     return new Set([
         ...MANDATORY_SKILLS,
-        ...[...enabledOptional].filter(s => OPTIONAL_SKILLS.includes(s)),
+        ...[...enabledOptional].filter(s => !MANDATORY_SKILLS.includes(s)),
     ]);
 }
 
