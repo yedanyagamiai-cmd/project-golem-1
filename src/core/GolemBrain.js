@@ -2,7 +2,7 @@
 // 🧠 Golem Brain (Web Gemini) - Clean Architecture Facade
 // ============================================================
 const path = require('path');
-const { CONFIG, cleanEnv } = require('../config');
+const { CONFIG, cleanEnv, LOG_BASE_DIR, GOLEM_MODE } = require('../config');
 const DOMDoctor = require('../services/DOMDoctor');
 const BrowserMemoryDriver = require('../memory/BrowserMemoryDriver');
 const SystemQmdDriver = require('../memory/SystemQmdDriver');
@@ -43,8 +43,8 @@ class GolemBrain {
         // ── 對話日誌 ──
         this.chatLogManager = new ChatLogManager({
             golemId: this.golemId,
-            logDir: options.logDir || path.join(process.cwd(), 'logs'),
-            isSingleMode: options.isSingleMode || false
+            logDir: options.logDir || LOG_BASE_DIR,
+            isSingleMode: options.isSingleMode !== undefined ? options.isSingleMode : (GOLEM_MODE === 'SINGLE')
         });
     }
 
@@ -329,38 +329,79 @@ class GolemBrain {
         await this.sendMessage(compressedPrompt, false); // ⚡ 改為 false：等待完整回應
         console.log(`📡 [Brain] 階段一：底層協議注入完成。`);
 
-        // 🧠 [第二階段] 注入完整歷史日誌摘要 (獨立訊息以優化記憶壓縮)
+        // 🧠 [第二階段] 金字塔式多層記憶注入
         if (this.chatLogManager) {
-            const fs = require('fs');
-            const logDir = this.chatLogManager.logDir;
-
             try {
-                // 掃描符合 YYYYMMDD.log 格式的檔案 (每日摘要)
-                const files = fs.readdirSync(logDir)
-                    .filter(f => f.length === 12 && f.endsWith('.log'))
-                    .sort();
+                let historicalMemory = "";
 
-                if (files.length > 0) {
-                    let historicalMemory = "";
-                    files.forEach(file => {
-                        try {
-                            const dateStr = file.replace('.log', '');
-                            const logs = JSON.parse(fs.readFileSync(path.join(logDir, file), 'utf8'));
-                            if (Array.isArray(logs)) {
-                                logs.forEach((entry, idx) => {
-                                    // 🛡️ [防呆] 只注入有內容的摘要，避免空字串污染 Prompt
-                                    if (entry.content && entry.content.trim()) {
-                                        historicalMemory += `\n--- [${dateStr} 摘要 #${idx + 1}] ---\n${entry.content}\n`;
-                                    }
-                                });
-                            }
-                        } catch (e) { }
+                // 🏛️ Tier 4: 紀元里程碑 (最近 1 個)
+                const eraSummaries = this.chatLogManager.readTier('era', 1);
+                if (eraSummaries.length > 0) {
+                    eraSummaries.forEach(s => {
+                        historicalMemory += `\n=== [紀元回憶: ${s.date}] ===\n${s.content}\n`;
                     });
+                }
 
-                    if (historicalMemory) {
-                        const memoryPulse = `【指令：載入長期記憶與背景壓縮】\n以下是你過去所有對話的彙總精華（依時間排序）。請完整閱讀並內化這些背景，將其視為你目前已知的所有先驗知識與決策紀錄：\n${historicalMemory}`;
-                        await this.sendMessage(memoryPulse, false); // ⚡ 改為 false：確保記憶載入完成
-                        console.log(`🧠 [Brain] 階段二：已注入 ${files.length} 個歷史日誌檔案作為獨立回憶。`);
+                // 🏛️ Tier 3: 年度回顧 (最近 1 個)
+                const yearlySummaries = this.chatLogManager.readTier('yearly', 1);
+                if (yearlySummaries.length > 0) {
+                    yearlySummaries.forEach(s => {
+                        historicalMemory += `\n=== [年度回顧: ${s.date}] ===\n${s.content}\n`;
+                    });
+                }
+
+                // 🏛️ Tier 2: 月度精華 (最近 3 個)
+                const monthlySummaries = this.chatLogManager.readTier('monthly', 3);
+                if (monthlySummaries.length > 0) {
+                    monthlySummaries.forEach(s => {
+                        historicalMemory += `\n--- [月度精華: ${s.date}] ---\n${s.content}\n`;
+                    });
+                }
+
+                // 🏛️ Tier 1: 每日摘要 (最近 7 天)
+                const dailySummaries = this.chatLogManager.readTier('daily', 7);
+                if (dailySummaries.length > 0) {
+                    dailySummaries.forEach(s => {
+                        historicalMemory += `\n--- [${s.date} 摘要] ---\n${s.content}\n`;
+                    });
+                }
+
+                if (historicalMemory) {
+                    const tierCounts = [
+                        eraSummaries.length > 0 ? `紀元×${eraSummaries.length}` : null,
+                        yearlySummaries.length > 0 ? `年度×${yearlySummaries.length}` : null,
+                        monthlySummaries.length > 0 ? `月度×${monthlySummaries.length}` : null,
+                        dailySummaries.length > 0 ? `每日×${dailySummaries.length}` : null,
+                    ].filter(Boolean);
+
+                    // ⚡ [Fix] Token 預算保護：超過 200K 字元時，從最舊 Tier 開始截斷
+                    const MAX_MEMORY_CHARS = 200000;
+                    if (historicalMemory.length > MAX_MEMORY_CHARS) {
+                        console.warn(`⚠️ [Brain] 歷史記憶超過 Token 預算 (${historicalMemory.length} chars > ${MAX_MEMORY_CHARS})，截斷較舊 Tier...`);
+                        historicalMemory = historicalMemory.slice(-MAX_MEMORY_CHARS);
+                    }
+
+                    // ⚡ [Fix] 動態生成注入說明，只列出實際有資料的層
+                    const tierDesc = tierCounts.length > 0
+                        ? `（涵蓋：${tierCounts.join(' → ')}）`
+                        : '';
+
+                    const memoryPulse = `【指令：載入長期記憶與背景壓縮】\n以下是你過去對話的多層次彙總精華${tierDesc}。請完整閱讀並內化這些背景，將其視為你目前已知的所有先驗知識與決策紀錄：\n${historicalMemory}`;
+                    await this.sendMessage(memoryPulse, false);
+                    console.log(`🧠 [Brain] 階段二：已注入多層記憶 (${tierCounts.join(', ')})。`);
+                } else {
+                    // 🕐 Tier 0 Fallback：無任何壓縮摘要時，直接載入全部 hourly 原始對話
+                    const rawMemory = this.chatLogManager.readRecentHourly();
+                    if (rawMemory) {
+                        const MAX_RAW_CHARS = 200000;
+                        const safeRaw = rawMemory.length > MAX_RAW_CHARS
+                            ? rawMemory.slice(-MAX_RAW_CHARS)
+                            : rawMemory;
+                        const rawPulse = `【指令：載入近期原始對話紀錄】\n目前尚無任何壓縮摘要，以下是你最近的完整對話原文。請完整閱讀並視為你已知的先驗背景：\n${safeRaw}`;
+                        await this.sendMessage(rawPulse, false);
+                        console.log(`🕐 [Brain] 階段二(Fallback)：已注入 Tier 0 原始 hourly 對話 (${safeRaw.length} chars)。`);
+                    } else {
+                        console.log(`ℹ️ [Brain] 階段二：無任何歷史記憶可注入 (全新會話)。`);
                     }
                 }
             } catch (e) {
