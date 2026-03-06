@@ -74,8 +74,9 @@ export default function CreateGolemPage() {
                 throw new Error(data.error || "建立失敗，請稍後再試");
             }
 
-            refreshGolems();
-            router.push("/dashboard");
+            // 建立完成後強制重整頁面讓 GolemContext 重新讀取狀態，
+            // layout.tsx 的 pending_setup guard 會自動把新 Golem 導向 /dashboard/setup
+            window.location.href = "/dashboard";
         } catch (err: any) {
             setError(err.message);
         } finally {

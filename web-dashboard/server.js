@@ -117,8 +117,8 @@ class WebServer {
             }
 
             try {
-                const { CONFIG, isPlaceholder } = require('../src/config/index');
-                const isConfigured = CONFIG.API_KEYS.length > 0 && !CONFIG.API_KEYS.some(isPlaceholder);
+                const ConfigManager = require('../src/config/index');
+                const isConfigured = ConfigManager.CONFIG.API_KEYS.length > 0 && !ConfigManager.CONFIG.API_KEYS.some(ConfigManager.isPlaceholder);
 
                 if (!isConfigured) {
                     console.log(`🚩 [WebServer] System not configured. Redirecting ${req.path} to /dashboard/system-setup`);
@@ -608,7 +608,8 @@ class WebServer {
                 const envVars = EnvManager.readEnv();
                 return res.json({
                     userDataDir: envVars.USER_DATA_DIR || './golem_memory',
-                    golemMemoryMode: envVars.GOLEM_MEMORY_MODE || 'browser'
+                    golemMemoryMode: envVars.GOLEM_MEMORY_MODE || 'browser',
+                    golemMode: envVars.GOLEM_MODE || 'MULTI'
                 });
             } catch (e) {
                 console.error('[WebServer] Failed to get system config:', e);
@@ -618,7 +619,7 @@ class WebServer {
 
         this.app.post('/api/system/config', (req, res) => {
             try {
-                const { geminiApiKeys, userDataDir, golemMemoryMode } = req.body;
+                const { geminiApiKeys, userDataDir, golemMemoryMode, golemMode } = req.body;
                 const EnvManager = require('../src/utils/EnvManager');
                 const ConfigManager = require('../src/config/index');
 
@@ -626,6 +627,7 @@ class WebServer {
                 if (geminiApiKeys) updates.GEMINI_API_KEYS = geminiApiKeys;
                 if (userDataDir) updates.USER_DATA_DIR = userDataDir;
                 if (golemMemoryMode) updates.GOLEM_MEMORY_MODE = golemMemoryMode;
+                if (golemMode) updates.GOLEM_MODE = golemMode;
 
                 if (Object.keys(updates).length > 0) {
                     EnvManager.updateEnv(updates);

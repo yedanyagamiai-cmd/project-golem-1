@@ -31,7 +31,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 
 export default function GolemSetupPage() {
     const router = useRouter();
-    const { activeGolem, activeGolemStatus } = useGolem();
+    const { activeGolem, activeGolemStatus, isLoadingGolems } = useGolem();
 
     const [templates, setTemplates] = useState<Preset[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
@@ -79,11 +79,14 @@ export default function GolemSetupPage() {
     });
 
     // If the active golem is already running, or no golem is selected, redirect back
+    // Wait for golems to finish loading before checking — otherwise the initial empty
+    // activeGolem value triggers an immediate redirect before status is known.
     useEffect(() => {
+        if (isLoadingGolems) return;
         if (activeGolemStatus === 'running' || !activeGolem) {
             router.push("/dashboard");
         }
-    }, [activeGolemStatus, activeGolem, router]);
+    }, [activeGolemStatus, activeGolem, isLoadingGolems, router]);
 
     const applyPreset = (preset: Preset) => {
         setActivePresetId(preset.id);
@@ -125,7 +128,7 @@ export default function GolemSetupPage() {
         }
     };
 
-    if (activeGolemStatus !== 'pending_setup') {
+    if (isLoadingGolems || activeGolemStatus !== 'pending_setup') {
         return (
             <div className="flex-1 flex flex-col items-center justify-center p-8 bg-gray-950 text-white">
                 <BrainCircuit className="w-12 h-12 text-cyan-500 animate-pulse mb-4" />

@@ -46,19 +46,9 @@ step_check_env() {
             echo -e "    ${YELLOW}ℹ${NC}  找不到 .env.example，將建立基本 .env 檔案"
             cat > "$DOT_ENV_PATH" << 'ENVEOF'
 TG_AUTH_MODE=ADMIN
-TG_CHAT_ID=
-TELEGRAM_TOKEN=
-ADMIN_ID=
-DISCORD_TOKEN=
-DISCORD_ADMIN_ID=
-USER_DATA_DIR=./golem_memory
-GOLEM_TEST_MODE=false
+# Golem Setup will be handled via Web Dashboard
 DASHBOARD_PORT=3000
-GOLEM_MEMORY_MODE=browser
-GITHUB_REPO=
 ENABLE_WEB_DASHBOARD=true
-GOLEM_INTERVENTION_LEVEL=CONSERVATIVE
-OPTIONAL_SKILLS=
 ENVEOF
             echo -e "    ${GREEN}✔${NC}  已建立基本 .env 設定檔"
             log "Created basic .env"
@@ -74,91 +64,29 @@ config_wizard() {
     echo ""
     echo ""
     box_top
-    box_line_colored "  ${BOLD}${CYAN}⚙️  環境變數配置精靈${NC}"
-    box_line_colored "  ${DIM}設定 API Keys 與系統選項${NC}"
+    box_line_colored "  ${BOLD}${CYAN}⚙️  Web Dashboard 配置精靈${NC}"
+    box_line_colored "  ${DIM}設定系統基本選項${NC}"
     box_sep
-    box_line_colored "  ${YELLOW}ℹ 提示: Golem Bot Token 設定請透過 Web Dashboard 管理${NC}"
-    box_line_colored "  ${DIM}      啟動後前往 http://localhost:3000 → 新增 Golem${NC}"
+    box_line_colored "  ${YELLOW}ℹ 提示: Golem 所有核心設定 (API Keys, 模式等)${NC}"
+    box_line_colored "  ${YELLOW}      現在統一透過 Web Dashboard 管理。${NC}"
+    box_line_colored "  ${DIM}      啟動後前往 http://localhost:3000${NC}"
     box_sep
-    box_line_colored "  ${DIM}直接按 Enter 保留目前值 │ 輸入 [B] 返回上一步${NC}"
     box_bottom
     echo ""
 
     # 讀取現有值
     [ -f "$DOT_ENV_PATH" ] && source "$DOT_ENV_PATH" 2>/dev/null
 
-    local step=1
-    local total=4
+    echo -e "  ${BOLD}${MAGENTA}[1/1]${NC} ${BOLD}Web Dashboard${NC}"
+    SINGLESELECT_DEFAULT="${ENABLE_WEB_DASHBOARD:-true}"
+    prompt_singleselect "啟用 Web Dashboard?" \
+        "true|啟用 Dashboard (推薦)" \
+        "false|停用 Dashboard"
+    local input="$SINGLESELECT_RESULT"
+    if [[ "$input" == "true" ]]; then update_env "ENABLE_WEB_DASHBOARD" "true"; ENABLE_WEB_DASHBOARD="true"
+    elif [[ "$input" == "false" ]]; then update_env "ENABLE_WEB_DASHBOARD" "false"; ENABLE_WEB_DASHBOARD="false"; fi
 
-    while [ $step -le 4 ]; do
-        case $step in
-            1)
-                echo -e "  ${BOLD}${MAGENTA}[${step}/${total}]${NC} ${BOLD}Google Gemini API Keys${NC}"
-                echo -e "  ${DIM}取得: https://aistudio.google.com/app/apikey${NC}"
-                local masked_gemini; masked_gemini=$(mask_value "${GEMINI_API_KEYS:-}")
-                echo -e "  目前: ${CYAN}${masked_gemini}${NC}"
-                read -r -p "  👉 輸入新 Keys (留空保留): " input
-                input=$(echo "$input" | xargs 2>/dev/null)
-                if [ -n "$input" ]; then update_env "GEMINI_API_KEYS" "$input"; GEMINI_API_KEYS="$input"; fi
-                step=$((step + 1)); echo "" ;;
-            2)
-                echo -e "  ${BOLD}${MAGENTA}[${step}/${total}]${NC} ${BOLD}Web Dashboard${NC}"
-                SINGLESELECT_DEFAULT="${ENABLE_WEB_DASHBOARD:-true}"
-                prompt_singleselect "啟用 Web Dashboard?" \
-                    "true|啟用 Dashboard (推薦)" \
-                    "false|停用 Dashboard" \
-                    "BACK|返回上一步 (B)"
-                local input="$SINGLESELECT_RESULT"
-                if [[ "$input" == "BACK" ]]; then step=$((step - 1)); continue; fi
-                if [[ "$input" == "true" ]]; then update_env "ENABLE_WEB_DASHBOARD" "true"; ENABLE_WEB_DASHBOARD="true"
-                elif [[ "$input" == "false" ]]; then update_env "ENABLE_WEB_DASHBOARD" "false"; ENABLE_WEB_DASHBOARD="false"; fi
-                step=$((step + 1)); echo "" ;;
-            3)
-                echo -e "  ${BOLD}${MAGENTA}[${step}/${total}]${NC} ${BOLD}觀察者介入等級 (全域預設)${NC}"
-                echo -e "  ${DIM}當子機器人沒單獨設定時，將採用此全域模式。${NC}"
-                SINGLESELECT_DEFAULT="${GOLEM_INTERVENTION_LEVEL:-CONSERVATIVE}"
-                prompt_singleselect "選擇等級:" \
-                    "CONSERVATIVE|保守 (僅限系統威脅/資安風險)" \
-                    "NORMAL|標準 (錯誤糾正、邏輯矛盾、安全提示)" \
-                    "PROACTIVE|積極 (主動提供建議、優化與協助)" \
-                    "BACK|返回上一步 (B)"
-                local input="$SINGLESELECT_RESULT"
-                if [[ "$input" == "BACK" ]]; then step=$((step - 1)); continue; fi
-                update_env "GOLEM_INTERVENTION_LEVEL" "$input"
-                GOLEM_INTERVENTION_LEVEL="$input"
-                step=$((step + 1)); echo "" ;;
-            4)
-                echo -e "  ${BOLD}${MAGENTA}[${step}/${total}]${NC} ${BOLD}選擇可選技能模組${NC}"
-                MULTISELECT_DEFAULT="${OPTIONAL_SKILLS:-}"
-                prompt_multiselect "使用空白鍵啟用特定功能 (按 Enter 確認):" \
-                    "git|Git 檔案變更、分支操作" \
-                    "image-prompt|圖片提示詞生成與分析" \
-                    "moltbot|Moltie 相關文件/指令參考" \
-                    "spotify|Spotify 音樂播放與控制" \
-                    "youtube|YouTube 影片及音樂控制"
-                update_env "OPTIONAL_SKILLS" "$MULTISELECT_RESULT"
-                OPTIONAL_SKILLS="$MULTISELECT_RESULT"
-                step=$((step + 1)); echo "" ;;
-        esac
-    done
-
-    # ─── Summary ────────────────────────────────────────────
     echo ""
-    box_top
-    box_line_colored "  ${BOLD}📋 配置摘要${NC}"
-    box_sep
-    local mg; mg=$(mask_value "${GEMINI_API_KEYS:-}")
-    box_line_colored "  Gemini Keys:    ${CYAN}${mg}${NC}"
-    box_line_colored "  Dashboard:      ${CYAN}${ENABLE_WEB_DASHBOARD:-true}${NC}"
-    box_line_colored "  Intent Level:   ${CYAN}${GOLEM_INTERVENTION_LEVEL:-CONSERVATIVE}${NC}"
-    box_line_colored "  Optional Skills:${CYAN}${OPTIONAL_SKILLS:-無}${NC}"
-    box_sep
-    box_line_colored "  ${GREEN}${BOLD}✅ 配置已儲存到 .env${NC}"
-    box_line_colored "  ${DIM}Bot Token 與 Golem 設定請透過 Web Dashboard 管理${NC}"
-    box_bottom
-    echo ""
-    log "Config wizard completed"
-    sleep 1
 }
 
 # ─── Step 3.5: Golems Config Wizard (已遷移至 Web Dashboard) ───
@@ -316,11 +244,7 @@ run_full_install() {
     # Step 3: Configure .env (Gemini Keys + System Options)
     progress_bar 3 $total_steps "配置環境變數"
     echo ""
-    echo -e "  ${DIM}ℹ 設定 Gemini API Key 等系統選項。Golem Bot Token 請啟動後透過 Web Dashboard 配置。${NC}"
-    echo ""
     config_wizard
-    # 預設採用 MULTI 模式讓每個 Golem 可獨立設定
-    update_env "GOLEM_MODE" "MULTI"
 
     # Step 4: Install core deps
     progress_bar 4 $total_steps "安裝核心依賴"

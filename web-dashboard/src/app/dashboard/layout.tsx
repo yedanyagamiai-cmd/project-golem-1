@@ -155,15 +155,16 @@ function DashboardContent({
     isSidebarOpen: boolean,
     setIsSidebarOpen: (v: boolean) => void
 }) {
-    const { activeGolem, activeGolemStatus, isSystemConfigured, isLoadingSystem } = useGolem();
+    const { activeGolem, activeGolemStatus, isSystemConfigured, isLoadingSystem, isLoadingGolems } = useGolem();
     const router = useRouter();
     const pathname = usePathname();
 
     useEffect(() => {
+        if (isLoadingGolems) return;
         if (activeGolemStatus === 'pending_setup' && pathname !== '/dashboard/setup') {
             router.push('/dashboard/setup');
         }
-    }, [activeGolemStatus, pathname, router]);
+    }, [activeGolemStatus, pathname, router, isLoadingGolems]);
 
     // 系統設定保護：若 GEMINI_API_KEYS 未設定且不在設定頁，就導向設定向導
     useEffect(() => {

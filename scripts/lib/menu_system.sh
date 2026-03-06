@@ -17,46 +17,26 @@ show_menu() {
     show_header
     echo -e "  ${DIM}$(pick_tagline)${NC}"
     echo ""
-    echo -e "  ${BOLD}${YELLOW}⚡ 快速啟動${NC}"
+    echo -e "  ${BOLD}${YELLOW}⚡ 核心指令${NC}"
     echo -e "  ${CYAN}───────────────────────────────────────────────${NC}"
-    echo -e "   ${BOLD}[0]${NC}  🚀 啟動系統 ${DIM}(使用目前配置)${NC}"
-    echo -e "\n  ${BOLD}${YELLOW}🛠️  安裝與維護${NC}"
-    echo -e "  ${CYAN}───────────────────────────────────────────────${NC}"
-    echo -e "   ${BOLD}[1]${NC}  📦 完整安裝"
-    echo -e "   ${BOLD}[I]${NC}  🧹 完全初始化"
-    echo -e "   ${BOLD}[3]${NC}  📥 安裝依賴"
-    echo -e "   ${BOLD}[4]${NC}  🌐 重建 Dashboard"
-    echo -e "\n  ${BOLD}${YELLOW}🐳 Docker 容器化${NC}"
-    echo -e "  ${CYAN}───────────────────────────────────────────────${NC}"
-    echo -e "   ${BOLD}[5]${NC}  🚀 Docker 啟動"
-    echo -e "   ${BOLD}[6]${NC}  🧹 清除 Docker"
-    echo -e "\n  ${BOLD}${YELLOW}🔧 工具${NC}"
-    echo -e "  ${CYAN}───────────────────────────────────────────────${NC}"
-    echo -e "   ${BOLD}[S]${NC}  🏥 系統健康檢查"
-    echo -e "   ${BOLD}[D]${NC}  🔄 切換 Dashboard"
-    echo -e "   ${BOLD}[L]${NC}  📋 查看安裝日誌"
-    echo -e "   ${BOLD}[K]${NC}  🛑 停止 Golem 與 Dashboard"
-    echo -e "\n   ${BOLD}[Q]${NC}  🚪 退出\n"
+    echo -e "   ${BOLD}[0]${NC}  🚀 啟動系統 ${DIM}(Start Golem & Dashboard)${NC}"
+    echo -e "   ${BOLD}[K]${NC}  🛑 停止系統 ${DIM}(Stop All Processes)${NC}"
+    echo -e "   ${BOLD}[1]${NC}  📦 安裝與更新 ${DIM}(Install Deps & Build)${NC}"
+    echo -e "   ${BOLD}[I]${NC}  🧹 完全初始化 ${DIM}(Reset System)${NC}"
+    echo -e "   ${BOLD}[Q]${NC}  🚪 退出${NC}"
+    echo ""
 
     read -r -p "  👉 請輸入選項: " raw_choice
-    # Byte-level filter: 僅保留 ASCII 字母與數字，確保排除編碼錯誤或 ANSI 殘留
+    # Byte-level filter: 僅保留 ASCII 字母與數字
     choice=$(echo "$raw_choice" | LC_ALL=C tr -dc 'a-zA-Z0-9' | awk '{print substr($0,1,1)}')
 
     case $choice in
         0) launch_system ;;
+        [Kk]) stop_system; show_menu ;;
         1) run_full_install ;;
         [Ii]) run_clean_init; show_menu ;;
-        3) step_install_core; step_install_dashboard; show_menu ;;
-        4) step_install_dashboard; show_menu ;;
-        5) launch_docker; show_menu ;;
-        6) clean_docker; show_menu ;;
-        [Ss]) check_status; run_health_check; read -r -p " 按 Enter 返回..."; show_menu ;;
-        [Dd]) toggle_dashboard ;;
-        [Ll]) view_logs ;;
-        [Kk]) stop_system; show_menu ;;
         [Qq]) echo -e "  ${GREEN}👋 再見！${NC}"; exit 0 ;;
         *) 
-            # 防護性顯示：只有當輸入是真的安全字元時才印出，否則顯示通用錯誤
             if [[ -n "$choice" && "$choice" =~ ^[a-zA-Z0-9]$ ]]; then
                 printf "  %b❌ 無效選項「%s」%b\n" "$RED" "$choice" "$NC"
             else
@@ -66,42 +46,7 @@ show_menu() {
     esac
 }
 
-toggle_dashboard() {
-    check_status
-    echo ""
-    if [ "$IsDashEnabled" = true ]; then
-        update_env "ENABLE_WEB_DASHBOARD" "false"
-        echo -e "  ${YELLOW}⏸️  已停用 Web Dashboard${NC}"
-        log "Dashboard disabled"
-    else
-        update_env "ENABLE_WEB_DASHBOARD" "true"
-        echo -e "  ${GREEN}✅ 已啟用 Web Dashboard${NC}"
-        log "Dashboard enabled"
-    fi
-    sleep 1
-    show_menu
-}
-
-view_logs() {
-    clear
-    echo ""
-    box_top
-    box_line_colored "  ${BOLD}📋 安裝日誌${NC} ${DIM}(最近 30 行)${NC}                             "
-    box_bottom
-    echo ""
-
-    if [ -f "$LOG_FILE" ]; then
-        tail -30 "$LOG_FILE" | while IFS= read -r line; do
-            echo -e "  ${DIM}$line${NC}"
-        done
-    else
-        echo -e "  ${DIM}(暫無日誌紀錄)${NC}"
-    fi
-
-    echo ""
-    read -r -p "  按 Enter 返回主選單..."
-    show_menu
-}
+# toggle_dashboard and view_logs are now handled via Web Dashboard
 
 stop_system() {
     echo ""
