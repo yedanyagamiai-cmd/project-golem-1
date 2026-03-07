@@ -31,7 +31,7 @@ if (!fs_sync.existsSync(envPath) && fs_sync.existsSync(envExamplePath)) {
 }
 
 try {
-    require('dotenv').config();
+    require('dotenv').config({ override: true });
 } catch (e) {
     console.error('⚠️ [Bootstrap] 尚未安裝依賴套件 (dotenv)。請確保已執行 npm install。');
 }
@@ -198,6 +198,8 @@ function getOrCreateGolem(golemId) {
             }
             if (golemConfig.tgToken && !telegramBots.has(golemConfig.id)) {
                 try {
+                    // [V9.0.8 修正] 先以 polling: false 建立 Bot，
+                    // 再延遲啟動 Polling 並使用 restart:true 讓舊 session 自動讓步，防止 409 Conflict
                     const bot = new TelegramBot(golemConfig.tgToken, { polling: false });
                     bot.golemConfig = golemConfig;
                     bot.getMe().then(me => {
@@ -236,6 +238,37 @@ function getOrCreateGolem(golemId) {
                         }
                     });
                     console.log(`🔗 [Factory] TG events bound for Golem [${boundGolemId}]`);
+
+                    // [V9.0.8] 409 衝突自動修復：若偵測到 session conflict，5 秒後自動重啟 Polling
+                    let _pollingRestartTimer = null;
+                    bot.on('polling_error', (err) => {
+                        if (err.code === 'ETELEGRAM' && err.message.includes('409')) {
+                            if (_pollingRestartTimer) return; // 防止重複觸發
+                            console.warn(`⚠️ [Bot] ${boundGolemId} 偵測到 409 Conflict，5 秒後自動重連...`);
+                            _pollingRestartTimer = setTimeout(async () => {
+                                _pollingRestartTimer = null;
+                                try { await bot.stopPolling(); } catch (e) { }
+                                await new Promise(r => setTimeout(r, 1000));
+                                try {
+                                    bot.startPolling({ restart: true });
+                                    console.log(`✅ [Bot] ${boundGolemId} Polling 已自動恢復。`);
+                                } catch (e) {
+                                    console.error(`❌ [Bot] ${boundGolemId} 自動重啟 Polling 失敗:`, e.message);
+                                }
+                            }, 5000);
+                        }
+                    });
+
+                    // [V9.0.8] 延遲啟動 Polling，先強制 Telegram 釋放叉的舊 Session，防止 409 Conflict
+                    setTimeout(async () => {
+                        try {
+                            // 呼叫一次 getUpdates 強制 Telegram Server 「踢掉」舊的 polling 連線
+                            await bot.getUpdates({ offset: -1, timeout: 1 }).catch(() => { });
+                            await new Promise(r => setTimeout(r, 1000));
+                        } catch (e) { /* ignore */ }
+                        bot.startPolling({ restart: true });
+                        console.log(`✅ [Bot] ${boundGolemId} Telegram Polling 已啟動。`);
+                    }, 3000);
                 } catch (e) {
                     console.error(`❌ [Bot] 初始化 ${golemConfig.id} Telegram 失敗:`, e.message);
                 }
@@ -279,7 +312,26 @@ function getOrCreateGolem(golemId) {
             if (typeof instance.brain._linkDashboard === 'function') {
                 instance.brain._linkDashboard();
             }
-            instance.brain.status = 'pending_setup';
+
+            // [V9.0.9 Fix]: Verify persona.json to decide actual status
+            const pathSync = require('path');
+            const fsSync = require('fs');
+            const { GOLEM_MODE, MEMORY_BASE_DIR } = require('./src/config');
+            const isSingleMode = GOLEM_MODE === 'SINGLE';
+
+            let personaPath;
+            if (isSingleMode) {
+                personaPath = pathSync.resolve(MEMORY_BASE_DIR, 'persona.json');
+            } else {
+                personaPath = pathSync.resolve(MEMORY_BASE_DIR, golemConfig.id, 'persona.json');
+            }
+
+            if (fsSync.existsSync(personaPath)) {
+                instance.brain.status = 'running';
+            } else {
+                instance.brain.status = 'pending_setup';
+            }
+
             instance.autonomy.start();
             console.log(`✅ [Factory] Golem [${golemConfig.id}] started via Web Dashboard.`);
             return instance;
@@ -311,7 +363,10 @@ function getOrCreateGolem(golemId) {
 
 async function handleUnifiedMessage(ctx, forceTargetId = null) {
     const msgTime = ctx.messageTime;
-    if (msgTime && msgTime < BOOT_TIME) {
+    console.log(`[DEBUG] msgTime: ${msgTime}, BOOT_TIME: ${BOOT_TIME}, diff: ${msgTime - BOOT_TIME}`);
+    // 允許 60 秒的時鐘誤差，防止伺服器時間稍快於通訊軟體伺服器時間導致新訊息被判定為舊訊息
+    if (msgTime && msgTime < (BOOT_TIME - 60000)) {
+        console.log(`[MessageManager] 忽略重啟前的舊訊息 (Golem: ${forceTargetId || 'golem_A'}, Diff: ${msgTime - BOOT_TIME}ms)`);
         return;
     }
 
@@ -684,9 +739,7 @@ async function executeDeploy(ctx, targetId) {
             try { await brain.memoryDriver.recordSuccess(); } catch (e) { }
         }
         await ctx.reply(`🚀 [${targetId}] ${targetName} 升級成功！正在重啟...`);
-        const subprocess = spawn(process.argv[0], process.argv.slice(1), { detached: true, stdio: 'ignore' });
-        subprocess.unref();
-        process.exit(0);
+        if (global.gracefulRestart) await global.gracefulRestart();
     } catch (e) { await ctx.reply(`❌ [${targetId}] 部署失敗: ${e.message}`); }
 }
 
@@ -713,5 +766,44 @@ if (dcClient) {
     dcClient.on('messageCreate', (msg) => { if (!msg.author.bot) handleUnifiedMessage(new UniversalContext('discord', msg, dcClient)); });
     dcClient.on('interactionCreate', (interaction) => { if (interaction.isButton()) handleUnifiedCallback(new UniversalContext('discord', interaction, dcClient), interaction.customId); });
 }
+
+global.gracefulRestart = async function () {
+    console.log("🛑 [System] 準備重啟，正在清理資源...");
+
+    // 1. 停止所有 Telegram Bot Polling，防止重啟後出現 409 Conflict
+    for (const [id, bot] of telegramBots.entries()) {
+        try {
+            console.log(`🛑 [System] 正在停止 Telegram Bot [${id}] Polling...`);
+            await bot.stopPolling();
+            console.log(`✅ [System] Telegram Bot [${id}] Polling 已停止。`);
+        } catch (e) {
+            console.warn(`⚠️ [System] 停止 Telegram Bot [${id}] Polling 失敗: ${e.message}`);
+        }
+    }
+
+    // 2. 關閉所有 Puppeteer 瀏覽器實體，釋放 Chrome Profile Lock
+    for (const [id, instance] of activeGolems.entries()) {
+        if (instance.brain && instance.brain.browser) {
+            try {
+                console.log(`🛑 [System] 正在關閉 Golem [${id}] 的瀏覽器...`);
+                await instance.brain.browser.close();
+                console.log(`✅ [System] Golem [${id}] 瀏覽器已關閉。`);
+            } catch (e) {
+                console.warn(`⚠️ [System] 關閉 Golem [${id}] 瀏覽器失敗: ${e.message}`);
+            }
+        }
+    }
+
+    // 3. 生成子程序並安全退出
+    const { spawn } = require('child_process');
+    const env = Object.assign({}, process.env, { SKIP_BROWSER: '1' });
+    const subprocess = spawn(process.argv[0], process.argv.slice(1), {
+        detached: true,
+        stdio: 'ignore',
+        env: env
+    });
+    subprocess.unref();
+    process.exit(0);
+};
 
 module.exports = { activeGolems, getOrCreateGolem };

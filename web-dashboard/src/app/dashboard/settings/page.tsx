@@ -202,28 +202,7 @@ export default function SettingsPage() {
 
             if (res.ok && data.success) {
                 setOriginalConfig(config);
-                setStatusMessage({ type: 'success', text: "設定已儲存並生效" });
-
-                // Check if any "restart required" fields were changed
-                const envRestartKeys = ['TELEGRAM_TOKEN', 'DISCORD_TOKEN', 'GOLEM_MODE', 'DASHBOARD_PORT', 'GOLEM_MEMORY_MODE'];
-                const envNeedsRestart = envRestartKeys.some(key => changedEnv[key] !== undefined);
-
-                let golemsNeedsRestart = false;
-                if (golemsChanged && config.golems && originalConfig.golems) {
-                    config.golems.forEach((golem, index) => {
-                        const orig = originalConfig.golems[index];
-                        if (!orig || golem.tgToken !== orig.tgToken) {
-                            golemsNeedsRestart = true;
-                        }
-                    });
-                    if (config.golems.length !== originalConfig.golems.length) {
-                        golemsNeedsRestart = true;
-                    }
-                }
-
-                if (envNeedsRestart || golemsNeedsRestart) {
-                    setStatusMessage({ type: 'warning', text: "部分設定已儲存，但需要重啟總開關（Restart System）才能完全生效。" });
-                }
+                setStatusMessage({ type: 'warning', text: "部分設定已儲存，但需要重啟總開關（Restart System）才能完全生效。" });
 
             } else {
                 throw new Error(data.message || data.error || "儲存失敗");
@@ -239,7 +218,33 @@ export default function SettingsPage() {
         if (!confirm("確定要重啟 Golem 嗎？這將會中斷目前的對話。")) return;
         try {
             await fetch("/api/system/reload", { method: "POST" });
-            setStatusMessage({ type: 'warning', text: "重新啟動指令已發送..." });
+            setStatusMessage({ type: 'warning', text: "重新啟動指令已發送... 等待系統恢復中！" });
+
+            // Start polling the backend to see when it comes back online
+            let retries = 0;
+            const maxRetries = 30; // 30 attempts, 1 sec each = 30 seconds max timeout
+
+            const pollInterval = setInterval(async () => {
+                retries++;
+                try {
+                    const checkRes = await fetch("/api/system/status");
+                    if (checkRes.ok) {
+                        clearInterval(pollInterval);
+                        setStatusMessage({ type: 'success', text: "重新啟動完成！頁面即將重新載入..." });
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
+                    }
+                } catch (err) {
+                    // Ignore errors, it means the server is simply offline and still rebooting
+                }
+
+                if (retries >= maxRetries) {
+                    clearInterval(pollInterval);
+                    setStatusMessage({ type: 'error', text: "重啟超時。請手動檢查終端機日誌。" });
+                }
+            }, 1000);
+
         } catch (e) {
             alert("重啟請求發送失敗。");
         }
@@ -284,10 +289,10 @@ export default function SettingsPage() {
 
     const SettingField = ({
         label, keyName, type = "text", placeholder = "", desc = "",
-        isHotReloadable = false, isReadOnly = false, isSecret = false, value, onChange
+        isReadOnly = false, isSecret = false, value, onChange
     }: {
         label: string, keyName: string, type?: string, placeholder?: string, desc?: string,
-        isHotReloadable?: boolean, isReadOnly?: boolean, isSecret?: boolean, value?: string, onChange?: (val: string) => void
+        isReadOnly?: boolean, isSecret?: boolean, value?: string, onChange?: (val: string) => void
     }) => {
         const isVisible = visibleFields[keyName] || false;
         // if it's secret and not visible, disguise it
@@ -303,10 +308,7 @@ export default function SettingsPage() {
                                 <Lock className="w-3 h-3" /> 唯讀
                             </span>
                         )}
-                        {!isReadOnly && isHotReloadable && (
-                            <span className="text-[10px] bg-green-900/40 text-green-400 px-1.5 py-0.5 rounded border border-green-800/50 whitespace-nowrap">馬上生效</span>
-                        )}
-                        {!isReadOnly && !isHotReloadable && (
+                        {!isReadOnly && (
                             <span className="text-[10px] bg-orange-900/40 text-orange-400 px-1.5 py-0.5 rounded border border-orange-800/50 whitespace-nowrap">需重啟</span>
                         )}
                     </div>
@@ -420,7 +422,6 @@ export default function SettingsPage() {
                                 keyName="GEMINI_API_KEYS"
                                 desc="支援多組 Key 輪替 (KeyChain)，請用半形逗號 ',' 分隔。"
                                 placeholder="AIzaSy...,AIzaSy..."
-                                isHotReloadable
                                 isSecret
                                 value={config.env.GEMINI_API_KEYS || ""}
                                 onChange={(val) => handleChangeEnv("GEMINI_API_KEYS", val)}
@@ -446,7 +447,6 @@ export default function SettingsPage() {
                                 keyName="TG_AUTH_MODE"
                                 placeholder="ADMIN 或 CHAT"
                                 desc="ADMIN: 僅限管理員個人。CHAT: 僅限特定群組。"
-                                isHotReloadable
                                 value={config.env.TG_AUTH_MODE || ""}
                                 onChange={(val) => handleChangeEnv("TG_AUTH_MODE", val)}
                             />
@@ -455,7 +455,6 @@ export default function SettingsPage() {
                                     label="Admin ID"
                                     keyName="ADMIN_ID"
                                     placeholder="無"
-                                    isHotReloadable
                                     isSecret
                                     value={config.env.ADMIN_ID || ""}
                                     onChange={(val) => handleChangeEnv("ADMIN_ID", val)}
@@ -464,7 +463,6 @@ export default function SettingsPage() {
                                     label="Chat ID"
                                     keyName="TG_CHAT_ID"
                                     placeholder="無"
-                                    isHotReloadable
                                     isSecret
                                     value={config.env.TG_CHAT_ID || ""}
                                     onChange={(val) => handleChangeEnv("TG_CHAT_ID", val)}
@@ -490,7 +488,6 @@ export default function SettingsPage() {
                                 label="Admin ID"
                                 keyName="DISCORD_ADMIN_ID"
                                 placeholder="無"
-                                isHotReloadable
                                 isSecret
                                 value={config.env.DISCORD_ADMIN_ID || ""}
                                 onChange={(val) => handleChangeEnv("DISCORD_ADMIN_ID", val)}
@@ -510,7 +507,6 @@ export default function SettingsPage() {
                                 keyName="MOLTBOOK_API_KEY"
                                 placeholder="無"
                                 desc="Agent 在 Moltbook 上的身分證憑證。"
-                                isHotReloadable
                                 isSecret
                                 value={config.env.MOLTBOOK_API_KEY || ""}
                                 onChange={(val) => handleChangeEnv("MOLTBOOK_API_KEY", val)}
@@ -520,7 +516,6 @@ export default function SettingsPage() {
                                 keyName="MOLTBOOK_AGENT_NAME"
                                 placeholder="例如: Golem_v9(golem)"
                                 desc="僅供辨識用的備註名稱。"
-                                isHotReloadable
                                 value={config.env.MOLTBOOK_AGENT_NAME || ""}
                                 onChange={(val) => handleChangeEnv("MOLTBOOK_AGENT_NAME", val)}
                             />
@@ -568,7 +563,6 @@ export default function SettingsPage() {
                                 label="OTA 升級節點 (GitHub Repo)"
                                 keyName="GITHUB_REPO"
                                 placeholder="https://raw.github..."
-                                isHotReloadable
                                 value={config.env.GITHUB_REPO || ""}
                                 onChange={(val) => handleChangeEnv("GITHUB_REPO", val)}
                             />
@@ -674,7 +668,6 @@ export default function SettingsPage() {
                                             value={golem.tgAuthMode || ""}
                                             onChange={(val) => handleChangeGolem(index, 'tgAuthMode', val)}
                                             placeholder="ADMIN 或是 CHAT"
-                                            isHotReloadable
                                         />
                                         <div className="grid grid-cols-2 gap-4">
                                             <SettingField
@@ -683,7 +676,6 @@ export default function SettingsPage() {
                                                 value={golem.adminId || ""}
                                                 onChange={(val) => handleChangeGolem(index, 'adminId', val)}
                                                 placeholder="使用者 ID"
-                                                isHotReloadable
                                                 isSecret
                                             />
                                             <SettingField
@@ -692,7 +684,6 @@ export default function SettingsPage() {
                                                 value={golem.chatId || ""}
                                                 onChange={(val) => handleChangeGolem(index, 'chatId', val)}
                                                 placeholder="群組 ID"
-                                                isHotReloadable
                                                 isSecret
                                             />
                                         </div>

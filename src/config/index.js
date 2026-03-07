@@ -39,7 +39,7 @@ if (CONFIG.API_KEYS.some(isPlaceholder)) CONFIG.API_KEYS = CONFIG.API_KEYS.filte
 
 // 🚀 解析運行模式 (單機 vs 多機)
 let GOLEMS_CONFIG = [];
-const GOLEM_MODE = (process.env.GOLEM_MODE || '').trim().toUpperCase();
+let GOLEM_MODE = (process.env.GOLEM_MODE || '').trim().toUpperCase();
 let modeToUse = GOLEM_MODE;
 const golemsJsonPath = path.join(process.cwd(), 'golems.json');
 
@@ -65,17 +65,22 @@ if (GOLEM_MODE === 'SINGLE') {
 
 // 處理單機模式或多機模式降級
 if (modeToUse === "SINGLE" || GOLEMS_CONFIG.length === 0) {
-    if (CONFIG.TG_TOKEN) {
+    modeToUse = "SINGLE";
+    GOLEM_MODE = "SINGLE"; // 同步實際模式
+    if (CONFIG.TG_TOKEN || CONFIG.DC_TOKEN) {
         GOLEMS_CONFIG = [{
             id: 'golem_A',
             tgToken: CONFIG.TG_TOKEN,
             tgAuthMode: CONFIG.TG_AUTH_MODE,
             chatId: CONFIG.TG_CHAT_ID,
-            adminId: CONFIG.ADMIN_ID
+            adminId: CONFIG.ADMIN_ID,
+            dcToken: CONFIG.DC_TOKEN,
+            dcAdminId: CONFIG.DISCORD_ADMIN_ID
         }];
-    } else {
-        // console.warn("⚠️ [Config] 未發現有效的 Telegram Token 且無 golems.json，機器人可能無法運作。");
     }
+} else {
+    GOLEM_MODE = "MULTI"; // 明確標示多機
+    modeToUse = "MULTI";
 }
 
 // 確保 ID 唯一，且都有基本的 Token 屬性
@@ -89,10 +94,14 @@ GOLEMS_CONFIG = GOLEMS_CONFIG.filter(g => {
 
 // 計算 mode-aware 路徑前綴
 // ✅ [Bug #5 修復] 改為 let，讓 reloadConfig() 能在切換模式時同步更新路徑
-let MODE_DIR = GOLEM_MODE === 'SINGLE' ? 'single' : 'multi';
+let MODE_DIR = modeToUse === 'SINGLE' ? 'single' : 'multi';
 let LOG_BASE_DIR = path.join(process.cwd(), 'logs', MODE_DIR);
-let MEMORY_BASE_DIR = path.resolve(CONFIG.USER_DATA_DIR || './golem_memory', MODE_DIR);
-let KNOWLEDGE_BASE_DIR = path.join(process.cwd(), 'golem_memory', MODE_DIR, 'knowledge');
+let MEMORY_BASE_DIR = modeToUse === 'SINGLE'
+    ? path.resolve(CONFIG.USER_DATA_DIR || './golem_memory')
+    : path.resolve(CONFIG.USER_DATA_DIR || './golem_memory', MODE_DIR);
+let KNOWLEDGE_BASE_DIR = modeToUse === 'SINGLE'
+    ? path.join(process.cwd(), 'golem_memory', 'knowledge')
+    : path.join(process.cwd(), 'golem_memory', MODE_DIR, 'knowledge');
 
 // 🔄 熱重載支援函數
 const reloadConfig = () => {
@@ -163,11 +172,22 @@ const reloadConfig = () => {
     }
 
     // ✅ [Bug #5 修復] 同步更新 mode-aware 路徑常數
-    const newModeDir = (freshEnv.GOLEM_MODE || '').trim().toUpperCase() === 'SINGLE' ? 'single' : 'multi';
+    const freshMode = (freshEnv.GOLEM_MODE || '').trim().toUpperCase();
+    let newModeToUse = freshMode === 'SINGLE' ? 'SINGLE' : 'MULTI';
+    if (newModeToUse !== 'SINGLE' && GOLEMS_CONFIG.length === 0) {
+        newModeToUse = 'SINGLE'; // 降級
+    }
+
+    GOLEM_MODE = newModeToUse;
+    const newModeDir = newModeToUse === 'SINGLE' ? 'single' : 'multi';
     MODE_DIR = newModeDir;
     LOG_BASE_DIR = path.join(process.cwd(), 'logs', newModeDir);
-    MEMORY_BASE_DIR = path.resolve(process.env.USER_DATA_DIR || CONFIG.USER_DATA_DIR || './golem_memory', newModeDir);
-    KNOWLEDGE_BASE_DIR = path.join(process.cwd(), 'golem_memory', newModeDir, 'knowledge');
+    MEMORY_BASE_DIR = newModeToUse === 'SINGLE'
+        ? path.resolve(process.env.USER_DATA_DIR || CONFIG.USER_DATA_DIR || './golem_memory')
+        : path.resolve(process.env.USER_DATA_DIR || CONFIG.USER_DATA_DIR || './golem_memory', newModeDir);
+    KNOWLEDGE_BASE_DIR = newModeToUse === 'SINGLE'
+        ? path.join(process.cwd(), 'golem_memory', 'knowledge')
+        : path.join(process.cwd(), 'golem_memory', newModeDir, 'knowledge');
 
     console.log(`🔄 [Config] 設定已熱重載完成 (Active API Keys: ${CONFIG.API_KEYS.length}, Golems: ${GOLEMS_CONFIG.length}, Mode: ${MODE_DIR})`);
 };

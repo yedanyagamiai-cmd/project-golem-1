@@ -81,6 +81,70 @@ class WebServer {
     setGolemFactory(fn) {
         this.golemFactory = fn;
         console.log('🔗 [WebServer] Golem factory injected — dynamic Golem creation enabled.');
+
+        // 🎯 V9.0.7: Auto-start fully-configured Golems on backend boot.
+        // We defer this by 2 seconds to let the server fully stabilize.
+        setTimeout(async () => {
+            const EnvManager = require('../src/utils/EnvManager');
+            const envVars = EnvManager.readEnv();
+            const ConfigManager = require('../src/config/index');
+            const fs = require('fs');
+            const path = require('path');
+
+            const isSingleNode = ConfigManager.GOLEM_MODE === 'SINGLE';
+            const { MEMORY_BASE_DIR } = ConfigManager;
+
+            console.log('🔄 [WebServer] Scanning for fully-configured Golems to auto-start...');
+
+            let allConfigs = [];
+
+            // 1. Gather configs
+            if (isSingleNode) {
+                const hasToken = envVars.TELEGRAM_TOKEN || envVars.DISCORD_TOKEN;
+                if (hasToken) {
+                    allConfigs.push({
+                        id: 'golem_A',
+                        tgToken: envVars.TELEGRAM_TOKEN,
+                        dcToken: envVars.DISCORD_TOKEN,
+                        tgAuthMode: envVars.TG_AUTH_MODE,
+                        adminId: envVars.ADMIN_ID,
+                        chatId: envVars.TG_CHAT_ID
+                    });
+                }
+            } else {
+                const golemsPath = path.resolve(process.cwd(), 'golems.json');
+                if (fs.existsSync(golemsPath)) {
+                    allConfigs = JSON.parse(fs.readFileSync(golemsPath, 'utf8'));
+                }
+            }
+
+            // 2. Iterate and check persona
+            for (const config of allConfigs) {
+                // Determine persona.json path
+                let personaPath;
+                if (isSingleNode) {
+                    personaPath = path.resolve(MEMORY_BASE_DIR, 'persona.json');
+                } else {
+                    personaPath = path.resolve(MEMORY_BASE_DIR, config.id, 'persona.json');
+                }
+
+                if (fs.existsSync(personaPath)) {
+                    // Ready to start!
+                    console.log(`🚀 [WebServer] Auto-starting Golem [${config.id}] from saved state...`);
+                    try {
+                        const instance = await this.golemFactory(config);
+                        if (instance.brain.init) {
+                            await instance.brain.init(false);
+                            console.log(`✅ [WebServer] Golem [${config.id}] auto-started successfully.`);
+                        }
+                    } catch (e) {
+                        console.error(`❌ [WebServer] Failed to auto-start Golem [${config.id}]:`, e);
+                    }
+                } else {
+                    console.log(`⏸️ [WebServer] Golem [${config.id}] skipped auto-start (Missing persona.json).`);
+                }
+            }
+        }, 2000);
     }
 
     setContext(golemId, brain, memory) {
@@ -198,49 +262,7 @@ class WebServer {
                 if (envUpdated || golemsUpdated) {
                     console.log(`📝 [System] Saved new config. env updated: ${envUpdated}, golems updated: ${golemsUpdated}`);
 
-                    // 2. 觸發熱重載
-                    ConfigManager.reloadConfig();
-
-                    // 3. 通知特定服務重載其對應的配置
-                    if (envPayload.GEMINI_API_KEYS !== undefined) {
-                        try {
-                            const { CONFIG } = require('../src/config/index');
-                            // 尋找運行中的 Golems 並通知 KeyChain
-                            // 由於架構上 Golem 的 keyChain 是實體化的，我們需要從 context 拿
-                            for (const [id, context] of this.contexts.entries()) {
-                                if (context.brain && context.brain.keyChain) {
-                                    context.brain.keyChain.updateKeys(CONFIG.API_KEYS);
-                                    console.log(`🔄 [System] Successfully injected new API Keys into Golem [${id}]`);
-                                }
-                            }
-                        } catch (e) {
-                            console.error("Failed to notify Golem KeyChains:", e.message);
-                        }
-                    }
-
-                    // 熱重載每個實體的 Admin ID (從 GOLEMS_CONFIG 讀取最新的設定)
-                    if (golemsUpdated) {
-                        try {
-                            const { GOLEMS_CONFIG } = require('../src/config/index');
-                            for (const [id, context] of this.contexts.entries()) {
-                                if (context.brain) {
-                                    const configForBrain = GOLEMS_CONFIG.find(g => g.id === id);
-                                    if (configForBrain && configForBrain.adminId !== undefined) {
-                                        // Update the golem's specific config
-                                        if (!context.brain.config) context.brain.config = {};
-                                        context.brain.config.adminId = configForBrain.adminId;
-                                        context.brain.config.chatId = configForBrain.chatId;
-                                        context.brain.config.tgAuthMode = configForBrain.tgAuthMode;
-                                        console.log(`🔄 [System] Successfully updated permissions for Golem [${id}]`);
-                                    }
-                                }
-                            }
-                        } catch (e) {
-                            console.error("Failed to hot reload multi golem configs:", e.message)
-                        }
-                    }
-
-                    return res.json({ success: true, message: "Settings saved successfully" });
+                    return res.json({ success: true, message: "Settings saved successfully. A system restart is required for changes to take effect." });
                 }
 
                 return res.json({ success: false, message: "No changes detected" });
@@ -542,7 +564,8 @@ class WebServer {
             try {
                 const EnvManager = require('../src/utils/EnvManager');
                 const envVars = EnvManager.readEnv();
-                const isSingleNode = (envVars.GOLEM_MODE || 'MULTI').trim().toUpperCase() === 'SINGLE';
+                const ConfigManager = require('../src/config/index');
+                const isSingleNode = ConfigManager.GOLEM_MODE === 'SINGLE';
 
                 // 1. 獲取現有的 golems.json 配置 (僅在非單機模式下)
                 const golemsPath = path.resolve(process.cwd(), 'golems.json');
@@ -578,12 +601,18 @@ class WebServer {
                         if (context && context.brain) {
                             status = context.brain.status || 'running';
                         } else {
-                            // ✅ [Bug #4 修復] 使用 MEMORY_BASE_DIR 來正確計算 persona.json 路徑
-                            // 路徑格式應為 <USER_DATA_DIR>/single/persona.json
-                            const { MEMORY_BASE_DIR } = require('../src/config/index');
-                            const personaPath = path.resolve(MEMORY_BASE_DIR, 'persona.json');
+                            // ✅ [Bug #4 修復] server.js 的 CWD 是 web-dashboard/，
+                            // 必須使用 __dirname 往上一層找到真正的 golem_memory 目錄
+                            const projectRoot = path.resolve(__dirname, '..');
+                            const envVarsForPath = EnvManager.readEnv();
+                            const userDataDirFromEnv = envVarsForPath.USER_DATA_DIR;
+                            const personaPath = userDataDirFromEnv
+                                ? path.resolve(userDataDirFromEnv, 'persona.json')
+                                : path.resolve(projectRoot, 'golem_memory', 'persona.json');
                             if (!fs.existsSync(personaPath)) {
                                 status = 'pending_setup';
+                            } else {
+                                status = 'running'; // ✅ [Bug #4 修復] 加上 if exists = running
                             }
                         }
                         golemsData.push({ id, status });
@@ -621,9 +650,9 @@ class WebServer {
                 const EnvManager = require('../src/utils/EnvManager');
                 const envVars = EnvManager.readEnv();
 
-                // 系統是否已設定：優先檢查 SYSTEM_CONFIGURED 標記
                 const isSystemConfigured = envVars.SYSTEM_CONFIGURED === 'true';
-                const isSingleNode = (envVars.GOLEM_MODE || 'MULTI').trim().toUpperCase() === 'SINGLE';
+                const ConfigManager = require('../src/config/index');
+                const isSingleNode = ConfigManager.GOLEM_MODE === 'SINGLE';
 
                 // --- 額外獲取環境資訊 ---
                 const os = require('os');
@@ -771,8 +800,8 @@ class WebServer {
 
                 // --- Mode-aware Logic ---
                 const EnvManager = require('../src/utils/EnvManager');
-                const envVars = EnvManager.readEnv();
-                const isSingleNode = (envVars.GOLEM_MODE || 'MULTI').trim().toUpperCase() === 'SINGLE';
+                const ConfigManager = require('../src/config/index');
+                const isSingleNode = ConfigManager.GOLEM_MODE === 'SINGLE';
 
                 if (isSingleNode) {
                     console.log('📝 [API] System in SINGLE mode. Writing Golem config to .env');
@@ -1228,15 +1257,19 @@ class WebServer {
 
             // Small delay to ensure the response is sent before the process exits
             setTimeout(() => {
-                const { spawn } = require('child_process');
-                const env = Object.assign({}, process.env, { SKIP_BROWSER: '1' });
-                const subprocess = spawn(process.argv[0], process.argv.slice(1), {
-                    detached: true,
-                    stdio: 'ignore',
-                    env: env
-                });
-                subprocess.unref();
-                process.exit(0);
+                if (global.gracefulRestart) {
+                    global.gracefulRestart();
+                } else {
+                    const { spawn } = require('child_process');
+                    const env = Object.assign({}, process.env, { SKIP_BROWSER: '1' });
+                    const subprocess = spawn(process.argv[0], process.argv.slice(1), {
+                        detached: true,
+                        stdio: 'ignore',
+                        env: env
+                    });
+                    subprocess.unref();
+                    process.exit(0);
+                }
             }, 1000);
         });
 
