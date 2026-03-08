@@ -27,31 +27,7 @@ class NeuroShunter {
             await brain.memorize(parsed.memory, { type: 'fact', timestamp: Date.now() });
         }
 
-        // 2. 處理直接回覆
-        if (parsed.reply && !shouldSuppressReply) {
-            let finalReply = parsed.reply;
-            if (ctx.platform === 'telegram' && ctx.shouldMentionSender) {
-                finalReply = `${ctx.senderMention} ${parsed.reply}`;
-            }
-            console.log(`🤖 [Golem] 說: ${finalReply}`);
-
-            // ✨ [Log] 記錄 AI 回應
-            if (brain && typeof brain._appendChatLog === 'function') {
-                brain._appendChatLog({
-                    sender: 'Golem',
-                    content: finalReply,
-                    type: 'ai',
-                    role: 'Assistant',
-                    isSystem: false
-                });
-            }
-
-            await ctx.reply(finalReply);
-        } else if (parsed.reply && shouldSuppressReply) {
-            console.log(`🤫 [NeuroShunter] 檢測到靜默模式，已攔截回覆內容。`);
-        }
-
-        // 3. 處理結構化 Action 分配 (Strategy Pattern)
+        // ✨ [v9.1] 順序調換：先處理結構化 Action 分配 (讓批准視窗先彈出)
         // 🚨 靜默模式下預設不執行自動 Action，避免非預期系統操作
         if (parsed.actions.length > 0 && !shouldSuppressReply) {
             console.log(`[GOLEM_ACTION]\n${JSON.stringify(parsed.actions, null, 2)}`);
@@ -73,12 +49,36 @@ class NeuroShunter {
                 }
             }
 
-            // 4. 處理剩餘的終端指令序列並自動啟動回饋循環 (Feedback Loop)
+            // 處理剩餘的終端指令序列並自動啟動回饋循環 (Feedback Loop)
             if (normalActions.length > 0) {
                 await CommandHandler.execute(ctx, normalActions, controller, brain, (c, r, b, ctrl) => this.dispatch(c, r, b, ctrl, options));
             }
         } else if (parsed.actions.length > 0 && shouldSuppressReply) {
             console.log(`🤫 [NeuroShunter] 靜默模式，跳過 ${parsed.actions.length} 個 Action 的執行。`);
+        }
+
+        // 處理直接回覆 (讓 AI 的解說文字在批准視窗之後出現)
+        if (parsed.reply && !shouldSuppressReply) {
+            let finalReply = parsed.reply;
+            if (ctx.platform === 'telegram' && ctx.shouldMentionSender) {
+                finalReply = `${ctx.senderMention} ${parsed.reply}`;
+            }
+            console.log(`🤖 [Golem] 說: ${finalReply}`);
+
+            // ✨ [Log] 記錄 AI 回應
+            if (brain && typeof brain._appendChatLog === 'function') {
+                brain._appendChatLog({
+                    sender: 'Golem',
+                    content: finalReply,
+                    type: 'ai',
+                    role: 'Assistant',
+                    isSystem: false
+                });
+            }
+
+            await ctx.reply(finalReply);
+        } else if (parsed.reply && shouldSuppressReply) {
+            console.log(`🤫 [NeuroShunter] 檢測到靜默模式，已攔截回覆內容。`);
         }
     }
 }

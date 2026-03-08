@@ -70,7 +70,34 @@ class ResponseParser {
                             });
 
                             parsed.actions.push(...steps);
-                        } catch (err) { console.error("Fallback 解析失敗:", err); }
+                        } catch (err) {
+                            console.error("Fallback 解析失敗:", err.message);
+                        }
+                    }
+
+                    // ✨ [終極防線：正則暴力解析] 如果上面的標準與寬鬆 JSON 解析都失敗，
+                    // 代表 AI 可能在 parameter 裡塞了未轉義的雙引號或換行符 (例如 echo "..." \n > file)
+                    if (parsed.actions.length === 0) {
+                        try {
+                            const actionTypeMatch = jsonCandidate.match(/"action"\s*:\s*"([^"]+)"/i);
+                            // 匹配 parameter 的內容，直到遇到 closing brace 為止
+                            const parameterMatch = jsonCandidate.match(/"(?:parameter|cmd|command)"\s*:\s*"([\s\S]*?)"(?=\s*\n?\s*\}\s*(?:,|\]|$))/i);
+
+                            if (actionTypeMatch && parameterMatch) {
+                                let cleanParam = parameterMatch[1]
+                                    .replace(/\\"/g, '"') // 先還原已被轉義的
+                                    .replace(/"/g, '\\"'); // 再全部重新安全轉義
+                                // 處理換行
+                                cleanParam = cleanParam.replace(/\n/g, '\\n').replace(/\r/g, '');
+
+                                const reconstructedJson = `[{"action": "${actionTypeMatch[1]}", "parameter": "${cleanParam}"}]`;
+                                const fixed = JSON.parse(reconstructedJson);
+                                parsed.actions.push(...fixed);
+                                console.log('🔧 [Parser] 終極正則暴力解析成功！已挽救破碎的 JSON 行動指令。');
+                            }
+                        } catch (err) {
+                            console.error("🔧 [Parser] 終極解析失敗:", err.message);
+                        }
                     }
                 }
             }

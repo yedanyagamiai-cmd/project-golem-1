@@ -11,9 +11,9 @@ class SecurityManager {
         const safeCmd = (cmd || "").trim();
         if (this.BLOCK_PATTERNS.some(regex => regex.test(safeCmd))) return { level: 'BLOCKED', reason: '毀滅性指令' };
 
-        // ✨ [v9.1] 增強檢查：若包含串聯或管線符號 (; | && ||) 則升級為 WARNING，避免惡意指令直通
-        if (/([;&|])/.test(safeCmd)) {
-            return { level: 'WARNING', reason: '多段式或管線化複雜指令，需確認' };
+        // ✨ [v9.1] 增強檢查：若包含串聯、管線符號 (; | && ||)、重導向 (> <) 或子殼層執行 ($() ``) 則升級為 WARNING，避免惡意指令直通
+        if (/([;&|><`])|\$\(/.test(safeCmd)) {
+            return { level: 'WARNING', reason: '包含管線、重導向或子系統呼叫等複雜操作，需確認' };
         }
 
         const baseCmd = safeCmd.split(/\s+/)[0];
