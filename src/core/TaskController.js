@@ -68,8 +68,12 @@ class TaskController {
                 reportBuffer.push(toolName ? `🔍 [ToolCheck] ${ToolScanner.check(toolName)}` : `⚠️ 缺少參數`);
                 continue;
             }
-            if (risk.level === 'BLOCKED') return `⛔ 指令被系統攔截：${cmdToRun}`;
+            if (risk.level === 'BLOCKED') {
+                console.log(`⛔ [TaskController] 指令被系統攔截: ${cmdToRun}`);
+                return `⛔ 指令被系統攔截：${cmdToRun}`;
+            }
             if (risk.level === 'WARNING' || risk.level === 'DANGER') {
+                console.log(`⚠️ [TaskController] 指令需審批 (${risk.level}): ${cmdToRun} - ${risk.reason}`);
                 const approvalId = uuidv4();
                 this.pendingTasks.set(approvalId, {
                     steps, nextIndex: i, ctx, timestamp: Date.now()
@@ -90,6 +94,8 @@ class TaskController {
                 );
                 return null;
             }
+
+            console.log(`🟢 [TaskController] 指令安全放行: ${cmdToRun}`);
             try {
                 if (!this.internalExecutor) this.internalExecutor = new Executor();
                 const output = await this.internalExecutor.run(cmdToRun);
