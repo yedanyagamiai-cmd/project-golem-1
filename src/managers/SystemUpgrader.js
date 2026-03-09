@@ -110,21 +110,8 @@ class SystemUpgrader {
                 }
             }
 
-            await ctx.reply("🚀 系統更新完成！正在進行神經系統重啟...");
-
-            // Use a slight timeout to let message send
-            setTimeout(() => {
-                console.log("🚀 [Upgrader] Starting automated restart (npm run dashboard)...");
-
-                const subprocess = spawn('npm', ['run', 'dashboard'], {
-                    detached: true,
-                    stdio: 'ignore',
-                    cwd: process.cwd(),
-                    env: { ...process.env, GOLEM_RESTARTED: 'true' }
-                });
-                subprocess.unref();
-                process.exit(0);
-            }, 1500);
+            await ctx.reply("🚀 系統更新完成！\n\n⚠️ 由於環境相容性考量，\n請您手動重新執行 `./setup.sh` 以套用最新變更。");
+            console.log("✅ Update complete. Manual restart required by user.");
 
         } catch (e) {
             console.error("❌ 全量更新失敗:", e);

@@ -1368,29 +1368,15 @@ class WebServer {
             console.log("🔄 [WebServer] Received reload request. Restarting system...");
             res.json({ success: true, message: "System is restarting..." });
 
-            // Small delay to ensure the response is sent before the process exits
+            // Inform the user that a manual restart is required
             setTimeout(() => {
-                if (global.gracefulRestart) {
-                    global.gracefulRestart();
-                } else {
-                    const { spawn } = require('child_process');
-                    console.log("🚀 [WebServer] Starting automated reload (npm run dashboard)...");
-
-                    const env = Object.assign({}, process.env, { SKIP_BROWSER: '1' });
-                    const subprocess = spawn('npm', ['run', 'dashboard'], {
-                        detached: true,
-                        stdio: 'ignore',
-                        env: env
-                    });
-                    subprocess.unref();
-                    process.exit(0);
-                }
-            }, 1000);
+                console.log("📢 [WebServer] Update applied. Manual restart requested via UI.");
+            }, 500);
         });
 
         this.app.post('/api/system/shutdown', (req, res) => {
             console.log("⛔ [WebServer] Received shutdown request. Stopping system...");
-            res.json({ success: true, message: "System is shutting down..." });
+            res.json({ success: true, message: "System is shutting down... Please restart manually if needed." });
 
             // 直接終止進程，不 spawn 新子進程
             // 與 reload 的差異：reload 會生出新進程再死去（熱重啟），shutdown 則完全停止
