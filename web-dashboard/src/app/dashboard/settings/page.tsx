@@ -3,8 +3,10 @@
 import React, { useState, useEffect } from "react";
 import {
     Settings, Save, RefreshCw, AlertTriangle, CheckCircle2,
-    Eye, EyeOff, Lock, Users, Server, Activity, Cpu, HardDrive
+    Eye, EyeOff, Lock, Users, Server, Activity, Cpu, HardDrive,
+    DownloadCloud, Loader2
 } from "lucide-react";
+import { io } from "socket.io-client";
 
 type GolemConfig = {
     id: string;
@@ -181,6 +183,270 @@ const SettingField = ({
     );
 };
 
+const SystemUpdateSection = () => {
+    const [updateInfo, setUpdateInfo] = useState<{ currentVersion: string, remoteVersion?: string, isOutdated?: boolean, installMode: string, gitInfo?: { currentBranch: string, currentCommit: string, latestCommit: string, behindCount: number } } | null>(null);
+    const [showModal, setShowModal] = useState(false);
+    const [isUpdating, setIsUpdating] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [statusText, setStatusText] = useState("");
+    const [keepOldData, setKeepOldData] = useState(true);
+    const [keepMemory, setKeepMemory] = useState(true);
+    const [updateDone, setUpdateDone] = useState(false);
+    const [logInfo, setLogInfo] = useState<{ size: string, bytes: number } | null>(null);
+
+    // Initial check for update and log info
+    useEffect(() => {
+        let isMounted = true;
+        const checkUpdate = async () => {
+            try {
+                const res = await fetch('/api/system/update/check');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (isMounted) setUpdateInfo(data);
+                }
+            } catch (err) {
+                console.error('Failed to check for updates:', err);
+            }
+        };
+
+        const checkLogInfo = async () => {
+            try {
+                const res = await fetch('/api/system/log-info');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (isMounted && data.success) setLogInfo(data);
+                }
+            } catch (err) {
+                console.error('Failed to fetch log info:', err);
+            }
+        };
+
+        checkUpdate();
+        checkLogInfo();
+
+        return () => { isMounted = false; };
+    }, []);
+
+    useEffect(() => {
+        if (!isUpdating && !showModal) return;
+        const socket = io(window.location.origin);
+        socket.on('system:update_progress', (data: any) => {
+            if (data.status === 'running') {
+                setStatusText(data.message);
+                if (data.progress !== null && data.progress !== undefined) setProgress(data.progress);
+            } else if (data.status === 'requires_restart') {
+                setStatusText(data.message);
+                setProgress(100);
+                setUpdateDone(true);
+                setIsUpdating(false);
+            } else if (data.status === 'error') {
+                setStatusText(data.message);
+                setIsUpdating(false);
+            }
+        });
+        return () => { socket.disconnect(); };
+    }, [isUpdating, showModal]);
+
+    const handleStartUpdate = async () => {
+        setIsUpdating(true);
+        setProgress(0);
+        setStatusText("準備更新...");
+        setUpdateDone(false);
+        try {
+            await fetch("/api/system/update/execute", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ keepOldData, keepMemory })
+            });
+        } catch (e) {
+            setStatusText("啟動更新程序失敗");
+            setIsUpdating(false);
+        }
+    };
+
+    const handleRestart = async () => {
+        try {
+            await fetch("/api/system/restart", { method: "POST" });
+            setStatusText("重新啟動指令已發送... 等待系統恢復中！");
+
+            let retries = 0;
+            const maxRetries = 40;
+            const pollInterval = setInterval(async () => {
+                retries++;
+                try {
+                    const checkRes = await fetch("/api/system/status");
+                    if (checkRes.ok) {
+                        clearInterval(pollInterval);
+                        setStatusText("重新啟動完成！頁面即將重新載入...");
+                        setTimeout(() => { window.location.reload(); }, 1000);
+                    }
+                } catch (err) {
+                    // Server is offline
+                }
+
+                if (retries >= maxRetries) {
+                    clearInterval(pollInterval);
+                    setStatusText("重啟超時。若您未配置自動重啟 (PM2/Nodemon)，請手動至終端機啟動伺服器。");
+                }
+            }, 1000);
+
+        } catch (e) {
+            alert("重啟請求發送失敗。");
+        }
+    };
+
+    if (!updateInfo) return null;
+
+    return (
+        <div className="bg-gray-900/30 border border-indigo-900/50 hover:border-indigo-700/50 transition-colors rounded-xl p-5 shadow-sm mb-6 animate-in fade-in">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div>
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                        <DownloadCloud className="w-5 h-5 text-indigo-400" />
+                        系統升級與版本控制 (System Update)
+                    </h2>
+                    <p className="text-sm text-gray-400 mt-1">
+                        當前版本: <span className="font-mono text-cyan-400 px-1">{updateInfo.currentVersion}</span>
+                        | 安裝模式: <span className="uppercase text-xs bg-gray-800 px-1.5 py-0.5 rounded ml-1 tracking-wider">{updateInfo.installMode}</span>
+                    </p>
+                </div>
+                <button
+                    onClick={() => { setShowModal(true); setUpdateDone(false); setIsUpdating(false); setStatusText(""); }}
+                    className="px-4 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/50 rounded-lg text-sm transition-all"
+                >
+                    檢查並更新系統 (Update)
+                </button>
+            </div>
+
+            {showModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl max-w-md w-full p-6 space-y-6">
+                        <h3 className="text-xl font-bold flex items-center gap-2 text-white">
+                            <DownloadCloud className="w-6 h-6 text-indigo-400" />
+                            系統一鍵更新
+                        </h3>
+
+                        {!isUpdating && !updateDone ? (
+                            <div className="space-y-4">
+                                <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto" />
+                                <p className="text-sm text-gray-300 text-center">
+                                    此動作將會從 GitHub 下載最新程式碼並進行覆寫。過程可能需要幾分鐘。
+                                </p>
+
+                                {updateInfo.installMode === 'git' && updateInfo.gitInfo && (
+                                    <div className="bg-gray-950 p-4 rounded-lg border border-gray-800 text-sm space-y-2">
+                                        <div className="flex items-center gap-2 text-indigo-400 font-semibold mb-2">
+                                            <Activity className="w-4 h-4" /> Git 版本差異分析
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">當前分支:</span>
+                                            <span className="text-gray-300 bg-gray-800 px-1.5 rounded">{updateInfo.gitInfo.currentBranch}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                            <span className="text-gray-500">當前版本 (Current):</span>
+                                            <span className="text-gray-400 font-mono text-xs">{updateInfo.gitInfo.currentCommit}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                            <span className="text-gray-500">遠端最新 (Latest):</span>
+                                            <span className="text-emerald-400/90 font-mono text-xs">{updateInfo.gitInfo.latestCommit}</span>
+                                        </div>
+                                        <div className="pt-2 border-t border-gray-800 mt-2">
+                                            {updateInfo.gitInfo.behindCount > 0 ? (
+                                                <span className="text-amber-400 font-medium">⚠️ 您的系統落後遠端 {updateInfo.gitInfo.behindCount} 個更新 (Commits)。建議進行更新。</span>
+                                            ) : (
+                                                <span className="text-emerald-400 font-medium">✅ 您目前已經是最新版本，無需更新。</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {updateInfo.installMode === 'zip' && updateInfo.remoteVersion && updateInfo.remoteVersion !== 'Unknown' && (
+                                    <div className="bg-gray-950 p-4 rounded-lg border border-gray-800 text-sm space-y-2">
+                                        <div className="flex items-center gap-2 text-indigo-400 font-semibold mb-2">
+                                            <Activity className="w-4 h-4" /> 主機板號差異分析
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">當前版本 (Current):</span>
+                                            <span className="text-gray-400 font-mono text-xs text-right">{updateInfo.currentVersion}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">遠端最新 (Latest):</span>
+                                            <span className="text-emerald-400/90 font-mono text-xs text-right">{updateInfo.remoteVersion}</span>
+                                        </div>
+                                        <div className="pt-2 border-t border-gray-800 mt-2">
+                                            {updateInfo.isOutdated ? (
+                                                <span className="text-amber-400 font-medium">⚠️ 發現新版本 (v{updateInfo.remoteVersion}) 可供更新。建議進行更新。</span>
+                                            ) : (
+                                                <span className="text-emerald-400 font-medium">✅ 您目前已經是最新版本 (v{updateInfo.currentVersion})。</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="space-y-3 bg-black/30 p-4 rounded-lg border border-gray-800">
+                                    <label className="flex items-start gap-3 cursor-pointer group">
+                                        <input type="checkbox" checked={keepMemory} onChange={(e) => setKeepMemory(e.target.checked)} className="mt-1" />
+                                        <div className="text-sm">
+                                            <span className="text-gray-200 block group-hover:text-white transition-colors">保留 Golem 記憶與設定檔</span>
+                                            <span className="text-gray-500 text-xs mt-1 block">強制保留 `golem_memory` 與 `.env`，避免心血流失。（強烈建議勾選）</span>
+                                        </div>
+                                    </label>
+
+                                    {updateInfo.installMode === 'zip' && (
+                                        <label className="flex items-start gap-3 cursor-pointer group pt-3 border-t border-gray-800">
+                                            <input type="checkbox" checked={keepOldData} onChange={(e) => setKeepOldData(e.target.checked)} className="mt-1" />
+                                            <div className="text-sm">
+                                                <span className="text-gray-200 block group-hover:text-white transition-colors">建立完整系統備份</span>
+                                                <span className="text-gray-500 text-xs mt-1 block">更新前將現有檔案移至 `backup_` 資料夾以防萬一。若取消勾選則會直接覆蓋刪除。</span>
+                                            </div>
+                                        </label>
+                                    )}
+                                </div>
+
+                                <div className="flex gap-3 justify-end pt-2">
+                                    <button onClick={() => setShowModal(false)} className="px-4 py-2 hover:bg-gray-800 text-gray-400 rounded-lg text-sm transition-colors">取消</button>
+                                    <button
+                                        onClick={handleStartUpdate}
+                                        disabled={
+                                            (updateInfo.installMode === 'git' && updateInfo.gitInfo && updateInfo.gitInfo.behindCount === 0) ||
+                                            (updateInfo.installMode === 'zip' && !updateInfo.isOutdated)
+                                        }
+                                        className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-900/50 disabled:text-gray-500 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
+                                    >開始更新</button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-6 py-4">
+                                <div className="text-center space-y-2">
+                                    {updateDone ? (
+                                        <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto animate-bounce" />
+                                    ) : (
+                                        <Loader2 className="w-12 h-12 text-indigo-500 mx-auto animate-spin" />
+                                    )}
+                                    <p className="text-white font-medium">{statusText || "請稍候..."}</p>
+                                </div>
+
+                                {!updateDone && (
+                                    <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden">
+                                        <div className="h-full bg-indigo-500 transition-all duration-500" style={{ width: `${progress}%` }} />
+                                    </div>
+                                )}
+
+                                {updateDone && (
+                                    <div className="flex gap-3 justify-center pt-4">
+                                        <button onClick={() => setShowModal(false)} className="px-4 py-2 hover:bg-gray-800 text-gray-400 border border-gray-700 rounded-lg text-sm">稍後重啟</button>
+                                        <button onClick={handleRestart} className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-bold shadow-lg shadow-emerald-900/50">立即重啟系統</button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 export default function SettingsPage() {
     const [config, setConfig] = useState<ConfigData>({ env: {}, golems: [] });
     const [originalConfig, setOriginalConfig] = useState<ConfigData>({ env: {}, golems: [] });
@@ -188,6 +454,7 @@ export default function SettingsPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'warning', text: string } | null>(null);
+    const [logInfo, setLogInfo] = useState<{ size: string, bytes: number } | null>(null);
 
     useEffect(() => {
         fetchConfig();
@@ -219,6 +486,18 @@ export default function SettingsPage() {
             const data = await res.json();
             if (res.ok) setSystemStatus(data);
         } catch (e) { console.error("Failed to fetch system status:", e); }
+    };
+
+    const fetchLogInfo = async () => {
+        try {
+            const res = await fetch('/api/system/log-info');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) setLogInfo(data);
+            }
+        } catch (err) {
+            console.error('Failed to fetch log info:', err);
+        }
     };
 
 
@@ -404,6 +683,9 @@ export default function SettingsPage() {
                 {/* System Health Dashboard */}
                 <SystemHealthDashboard systemStatus={systemStatus} />
 
+                {/* System Update Region */}
+                <SystemUpdateSection />
+
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* 左側：AI 大腦與控制權限 */}
                     <div className="space-y-6">
@@ -554,13 +836,64 @@ export default function SettingsPage() {
                                 value={config.env.USER_DATA_DIR || ""}
                                 onChange={(val) => handleChangeEnv("USER_DATA_DIR", val)}
                             />
-                            <SettingField
-                                label="OTA 升級節點 (GitHub Repo)"
-                                keyName="GITHUB_REPO"
-                                placeholder="https://raw.github..."
-                                value={config.env.GITHUB_REPO || ""}
-                                onChange={(val) => handleChangeEnv("GITHUB_REPO", val)}
-                            />
+                            <div className="grid grid-cols-2 gap-4 mt-4">
+                                <SettingField
+                                    label="OTA 升級節點 (GitHub Repo)"
+                                    keyName="GITHUB_REPO"
+                                    placeholder="https://raw.github..."
+                                    value={config.env.GITHUB_REPO || ""}
+                                    onChange={(val) => handleChangeEnv("GITHUB_REPO", val)}
+                                />
+                                <div className="space-y-4 col-span-2">
+                                    <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-700/50">
+                                        <h4 className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                                            日誌輪替策略 (Log Rotation Strategy)
+                                        </h4>
+                                        <p className="text-xs text-gray-500 mb-4">
+                                            系統將自動在「跨日」或「檔案大小達標」時建立新的日誌壓縮檔，這兩個條件只要達成其一即會觸發輪替。
+                                        </p>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <SettingField
+                                                label="單檔儲存上限 (MB)"
+                                                keyName="LOG_MAX_SIZE_MB"
+                                                placeholder="10"
+                                                desc="超過此容量即切割壓縮新檔 (設 0 則不限制)"
+                                                value={config.env.LOG_MAX_SIZE_MB || ""}
+                                                onChange={(val) => handleChangeEnv("LOG_MAX_SIZE_MB", val)}
+                                            />
+                                            <SettingField
+                                                label="保留歷史檔案天數"
+                                                keyName="LOG_RETENTION_DAYS"
+                                                placeholder="7"
+                                                desc="過舊的壓縮日誌將會自動刪除"
+                                                value={config.env.LOG_RETENTION_DAYS || ""}
+                                                onChange={(val) => handleChangeEnv("LOG_RETENTION_DAYS", val)}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="mt-4 pt-4 border-t border-gray-800/80">
+                                <div className="flex items-center justify-between mb-4">
+                                    <span className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                                        啟用系統日誌 (System Log)
+                                        {logInfo && (
+                                            <span className={`px-2 py-0.5 rounded text-xs font-mono ml-2 ${logInfo.bytes > 10 * 1024 * 1024 ? 'bg-red-900/50 text-red-400' : 'bg-green-900/30 text-green-400'}`}>
+                                                system.log 大小: {logInfo.size}
+                                            </span>
+                                        )}
+                                    </span>
+                                </div>
+                                <SettingField
+                                    label=""
+                                    keyName="ENABLE_SYSTEM_LOG"
+                                    placeholder="true"
+                                    desc="設為 false 將完全不記錄 system.log，節省硬碟空間"
+                                    value={config.env.ENABLE_SYSTEM_LOG || ""}
+                                    onChange={(val) => handleChangeEnv("ENABLE_SYSTEM_LOG", val)}
+                                />
+                            </div>
                         </div>
 
                         {/* Section: Autonomy Schedule */}

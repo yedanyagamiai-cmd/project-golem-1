@@ -29,6 +29,7 @@
   "license": "MIT",
   "dependencies": {
     "@google/generative-ai": "0.21.0",
+    "adm-zip": "^0.5.16",
     "blessed": "0.1.81",
     "blessed-contrib": "4.11.0",
     "discord.js": "14.14.1",
