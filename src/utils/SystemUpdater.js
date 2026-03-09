@@ -31,32 +31,61 @@ class SystemUpdater {
             try {
                 const util = require('util');
                 const exec = util.promisify(require('child_process').exec);
-                // Fetch latest info from remote without altering working directory
-                await exec('git fetch', { cwd: rootDir });
+
+                // 1. Fetch from all remotes to get latest metadata
+                await exec('git fetch --all', { cwd: rootDir });
+
+                // 2. Identify current branch
                 const { stdout: branchOut } = await exec('git rev-parse --abbrev-ref HEAD', { cwd: rootDir });
                 const currentBranch = branchOut.trim();
 
+                // 3. Get current commit info
                 const { stdout: currentCommitOut } = await exec('git log -1 --format="%h - %s (%cr)"', { cwd: rootDir });
                 const currentCommit = currentCommitOut.trim();
 
+                // 4. Traverse all remotes to find matching branch
+                const { stdout: rbOut } = await exec('git branch -r', { cwd: rootDir });
+                const remoteBranches = rbOut.trim().split('\n').map(b => b.trim());
+
+                const { stdout: rOut } = await exec('git remote', { cwd: rootDir });
+                const remotesList = rOut.trim().split('\n');
+
+                const priorityRemotes = ['upstream', 'origin', ...remotesList.filter(r => r !== 'upstream' && r !== 'origin')];
+
+                let targetRemote = 'origin';
+                let foundMatch = false;
+                for (const r of priorityRemotes) {
+                    if (remoteBranches.includes(`${r}/${currentBranch}`)) {
+                        targetRemote = r;
+                        foundMatch = true;
+                        break;
+                    }
+                }
+
                 let latestCommit = 'N/A';
                 let behindCount = 0;
-                try {
-                    const { stdout: latestCommitOut } = await exec(`git log origin/${currentBranch} -1 --format="%h - %s (%cr)"`, { cwd: rootDir });
-                    latestCommit = latestCommitOut.trim();
 
-                    const { stdout: behindOut } = await exec(`git rev-list HEAD..origin/${currentBranch} --count`, { cwd: rootDir });
-                    behindCount = parseInt(behindOut.trim(), 10) || 0;
-                } catch (err) {
-                    // Branch might not exist on remote
-                    latestCommit = '無法取得遠端資訊';
+                if (foundMatch) {
+                    try {
+                        const targetRef = `${targetRemote}/${currentBranch}`;
+                        const { stdout: latestCommitOut } = await exec(`git log ${targetRef} -1 --format="%h - %s (%cr)"`, { cwd: rootDir });
+                        latestCommit = latestCommitOut.trim();
+
+                        const { stdout: behindOut } = await exec(`git rev-list HEAD..${targetRef} --count`, { cwd: rootDir });
+                        behindCount = parseInt(behindOut.trim(), 10) || 0;
+                    } catch (err) {
+                        latestCommit = '解析遠端資訊失敗';
+                    }
+                } else {
+                    latestCommit = '無法在任何遠端找到匹配的分支';
                 }
 
                 gitInfo = {
                     currentBranch,
                     currentCommit,
                     latestCommit,
-                    behindCount
+                    behindCount,
+                    targetRemote: foundMatch ? targetRemote : null
                 };
             } catch (e) {
                 console.error("[SystemUpdater] Failed to get git info", e);
@@ -128,9 +157,44 @@ class SystemUpdater {
             this.broadcast(io, 'running', '儲存本地暫存變更 (git stash)...', 10);
             try { await this.execAsync('git stash', { cwd: rootDir }); } catch (e) { }
 
-            this.broadcast(io, 'running', '從遠端拉取最新程式碼 (git pull origin main)...', 30);
-            try { await this.execAsync('git pull origin main', { cwd: rootDir }); }
-            catch (e) { throw new Error('拉取遠端程式碼失敗，可能發生合併衝突。'); }
+            this.broadcast(io, 'running', '執行 git fetch --all 同步所有遠端資訊...', 20);
+            await this.execAsync('git fetch --all', { cwd: rootDir });
+
+            let currentBranch = 'main';
+            let targetRemote = 'origin';
+            try {
+                const util = require('util');
+                const exec = util.promisify(require('child_process').exec);
+
+                const { stdout: branchOut } = await exec('git rev-parse --abbrev-ref HEAD', { cwd: rootDir });
+                currentBranch = branchOut.trim();
+
+                const { stdout: rbOut } = await exec('git branch -r', { cwd: rootDir });
+                const remoteBranches = rbOut.trim().split('\n').map(b => b.trim());
+
+                const { stdout: rOut } = await exec('git remote', { cwd: rootDir });
+                const remotes = rOut.trim().split('\n');
+
+                const priorityRemotes = ['upstream', 'origin', ...remotes.filter(r => r !== 'upstream' && r !== 'origin')];
+                let foundMatch = false;
+                for (const r of priorityRemotes) {
+                    if (remoteBranches.includes(`${r}/${currentBranch}`)) {
+                        targetRemote = r;
+                        foundMatch = true;
+                        break;
+                    }
+                }
+
+                if (!foundMatch) {
+                    console.warn(`[SystemUpdater] No remote branch matches ${currentBranch}, fallback to ${targetRemote}`);
+                }
+            } catch (e) {
+                console.warn("[SystemUpdater] Git detection failed, using defaults");
+            }
+
+            this.broadcast(io, 'running', `從遠端拉取代碼 (git pull ${targetRemote} ${currentBranch})...`, 30);
+            try { await this.execAsync(`git pull ${targetRemote} ${currentBranch}`, { cwd: rootDir }); }
+            catch (e) { throw new Error(`拉取遠端 ${targetRemote}/${currentBranch} 失敗。`); }
 
             this.broadcast(io, 'running', '回復本地變更 (git stash pop)...', 50);
             try { await this.execAsync('git stash pop', { cwd: rootDir }); } catch (e) { }
