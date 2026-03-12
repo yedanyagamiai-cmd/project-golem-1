@@ -956,6 +956,56 @@ class WebServer {
             }
         });
 
+        this.app.get('/api/persona/market', (req, res) => {
+            try {
+                const { search, category, page = 1, limit = 20 } = req.query;
+                const personasDir = path.resolve(process.cwd(), 'data', 'marketplace', 'personas');
+                
+                if (!fs.existsSync(personasDir)) {
+                    return res.json({ personas: [], total: 0 });
+                }
+
+                let allPersonas = [];
+                const files = fs.readdirSync(personasDir).filter(f => f.endsWith('.json'));
+
+                // Optimize: if category is specified, only read that file
+                if (category && category !== 'all') {
+                    const catFile = path.join(personasDir, `${category}.json`);
+                    if (fs.existsSync(catFile)) {
+                        allPersonas = JSON.parse(fs.readFileSync(catFile, 'utf8'));
+                    }
+                } else {
+                    // Load all
+                    for (const file of files) {
+                        const data = fs.readFileSync(path.join(personasDir, file), 'utf8');
+                        allPersonas = allPersonas.concat(JSON.parse(data));
+                    }
+                }
+
+                if (search) {
+                    const term = search.toLowerCase();
+                    allPersonas = allPersonas.filter(p => 
+                        (p.name && p.name.toLowerCase().includes(term)) || 
+                        (p.name_zh && p.name_zh.toLowerCase().includes(term)) ||
+                        (p.description && p.description.toLowerCase().includes(term)) ||
+                        (p.description_zh && p.description_zh.toLowerCase().includes(term)) ||
+                        (p.role && p.role.toLowerCase().includes(term)) ||
+                        (p.role_zh && p.role_zh.toLowerCase().includes(term))
+                    );
+                }
+
+                const total = allPersonas.length;
+                const startIndex = (Number(page) - 1) * Number(limit);
+                const endIndex = startIndex + Number(limit);
+                const personas = allPersonas.slice(startIndex, endIndex);
+
+                return res.json({ personas, total });
+            } catch (e) {
+                console.error("Failed to load market personas:", e);
+                return res.status(500).json({ error: e.message });
+            }
+        });
+
         this.app.get('/api/golems', (req, res) => {
             try {
                 const EnvManager = require('../src/utils/EnvManager');
