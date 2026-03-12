@@ -164,7 +164,11 @@ step_install_dashboard() {
         return
     fi
 
-    if ! run_quiet_step "建置 Dashboard (Next.js Build)" npm run build; then
+    if [ "${DASHBOARD_DEV_MODE:-false}" = "true" ]; then
+        ui_info "偵測到 DASHBOARD_DEV_MODE=true，跳過 Next.js 建置步驟。"
+        update_env "ENABLE_WEB_DASHBOARD" "true"
+        log "Dashboard build skipped (Dev Mode)"
+    elif ! run_quiet_step "建置 Dashboard (Next.js Build)" npm run build; then
         ui_warn "Dashboard 建置失敗！"
         ui_warn "這通常是因為環境或依賴問題，您可以之後在選單中單獨嘗試 [4] 建置。"
         update_env "ENABLE_WEB_DASHBOARD" "true"  # 保持為 true，讓 launch_system 的自動修復邏輯能介入

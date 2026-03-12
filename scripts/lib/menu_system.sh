@@ -4,7 +4,8 @@ show_header() {
     check_status
     clear; echo ""
     box_header_dashboard
-    echo -e "  ${DIM}NODE_NAME: ${NC}${BOLD}${WHITE}$SYS_NAME${NC} ${DIM}• 核心版本: ${NC}${CYAN}v${GOLEM_VERSION}${NC}"
+    echo -ne "  ${DIM}NODE_NAME: ${NC}${BOLD}${WHITE}$SYS_NAME${NC} ${DIM}• 核心版本: ${NC}${CYAN}v${GOLEM_VERSION}${NC}"
+    echo -e " ${DIM}• Node.js: ${NC}${YELLOW}$(node -v 2>/dev/null || echo N/A)${NC}"
     echo ""
 }
 
@@ -106,13 +107,20 @@ stop_system() {
         rm -f "$pid_file"
     fi
 
-    # 2. Kill anything on Dashboard port (default 3000)
+    # 2. Kill anything on Dashboard port
     local dash_port="${DASHBOARD_PORT:-3000}"
     local dash_pids
     dash_pids=$(lsof -ti tcp:"$dash_port" 2>/dev/null)
     if [ -n "$dash_pids" ]; then
         echo "$dash_pids" | xargs kill 2>/dev/null
         echo -e "  ${GREEN}✅ Dashboard (port $dash_port) 已停止${NC}"
+        killed=1
+    fi
+
+    # 2.5 Kill Next.js Dev Server if running on 3000 (standard for dev mode)
+    if [ -n "$(lsof -ti tcp:3000 2>/dev/null)" ] && [ "$dash_port" != "3000" ]; then
+        lsof -ti tcp:3000 2>/dev/null | xargs kill 2>/dev/null
+        echo -e "  ${GREEN}✅ Next.js Dev Server (port 3000) 已停止${NC}"
         killed=1
     fi
 
@@ -185,7 +193,17 @@ launch_system() {
     run_health_check
 
     if [ "$IsDashEnabled" = true ]; then
-        if [ ! -d "$SCRIPT_DIR/web-dashboard/out" ]; then
+        if [ "${DASHBOARD_DEV_MODE:-false}" = "true" ]; then
+            echo -e "  ${YELLOW}🚧 Dashboard 處於開發模式 (Dev Mode)${NC}"
+            echo -e "  ${DIM}   🚀 正在背景啟動 Next.js 開發伺服器...${NC}"
+            
+            # 自動在背景啟動 Next.js Dev Server
+            (cd "$SCRIPT_DIR/web-dashboard" && npm run dev > "$SCRIPT_DIR/logs/next-dev.log" 2>&1) &
+            
+            echo -e "  ${DIM}   後端伺服器已自動避讓至埠號 3001${NC}"
+            echo -e "  ${GREEN}   🌐 存取介面指令 → ${BOLD}http://localhost:3000/dashboard${NC}"
+            echo -e "  ${DIM}   開發伺服器日誌: logs/next-dev.log${NC}"
+        elif [ ! -d "$SCRIPT_DIR/web-dashboard/out" ]; then
             echo -e "  ${YELLOW}⚠️  偵測到 Dashboard 尚未建置，正在為您自動建置...${NC}"
             step_install_dashboard
             # 重新檢查建置結果

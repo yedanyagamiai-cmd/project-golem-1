@@ -48,7 +48,8 @@ process.on('unhandledRejection', (reason, promise) => {
 // Dashboard 強制啟用
 try {
     require('./dashboard');
-    console.log('✅ Golem Web Dashboard 已啟動 → http://localhost:' + (process.env.DASHBOARD_PORT || 3000));
+    const displayPort = process.env.DASHBOARD_DEV_MODE === 'true' ? 3000 : (process.env.DASHBOARD_PORT || 3000);
+    console.log('✅ Golem Web Dashboard 已啟動 → http://localhost:' + displayPort);
 } catch (e) {
     console.error('❌ 無法載入 Dashboard:', e.message);
 }

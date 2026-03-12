@@ -61,11 +61,19 @@ class WebServer {
 
         this.io = new Server(this.server, {
             cors: {
-                origin: "*", // Allow Next.js dev server
+                origin: ["http://localhost:3000", "http://localhost:3001"], // Allow Next.js dev server and alternative ports
                 methods: ["GET", "POST"]
             }
         });
         this.port = process.env.DASHBOARD_PORT || 3000;
+        
+        // ✨ [Dev Mode Optimization]
+        // If in Dev Mode and port is still 3000 (default), shift backend to 3001 
+        // to avoid conflict with Next.js Dev Server (which also defaults to 3000).
+        if (process.env.DASHBOARD_DEV_MODE === 'true' && this.port == 3000) {
+            console.log('🚧 [WebServer] Dev Mode detected + Port 3000: Automatically shifting backend to 3001.');
+            this.port = 3001;
+        }
 
         this.contexts = new Map();
         this.golemFactory = null; // Injected from index.js for dynamic Golem creation
@@ -154,81 +162,104 @@ class WebServer {
     }
 
     init() {
-        // Serve static files with .html extension support
+        // Serve static files with .html extension support - ONLY IN NON-DEV MODE
+        const isDevMode = process.env.DASHBOARD_DEV_MODE === 'true';
         const publicPath = path.join(__dirname, 'out');
-        this.app.use(express.static(publicPath, {
-            extensions: ['html'],
-            setHeaders: (res, path) => {
-                res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-                res.setHeader('Pragma', 'no-cache');
-                res.setHeader('Expires', '0');
-            }
-        }));
 
-        // Fix Next.js static export routing
-        this.app.get('/', (req, res) => {
-            res.redirect('/dashboard');
-        });
-
-        // Ensure /dashboard and sub-routes are handled for SPA
-        const dashboardRoutes = [
-            '/dashboard',
-            '/dashboard/terminal',
-            '/dashboard/agents',
-            '/dashboard/office',
-            '/dashboard/system-setup'
-        ];
-
-        // 🎯 V9.0.7 解耦：自動導引系統設定 (Auto-Setup)
-        // 在進入 Dashboard 核心頁面之前，檢查系統配置狀態
-        this.app.get(/\/dashboard.*/, (req, res, next) => {
-            const normalizedPath = req.path.replace(/\/$/, "");
-            // 排除設定頁面本身與 API 請求，避免無限重定向
-            if (normalizedPath === '/dashboard/system-setup' || req.path.startsWith('/api/')) {
-                return next();
-            }
-
-            try {
-                const ConfigManager = require('../src/config/index');
-                // V9.0.9 修正：強制檢查初始化標記
-                // 只有在 SYSTEM_CONFIGURED 為 'true' 時才允許通行
-                const isConfigured = process.env.SYSTEM_CONFIGURED === 'true';
-
-                if (!isConfigured) {
-                    console.log(`🚩 [WebServer] System NOT initialized. Redirecting ${req.path} to /dashboard/system-setup`);
-                    return res.redirect('/dashboard/system-setup');
+        if (!isDevMode) {
+            this.app.use(express.static(publicPath, {
+                extensions: ['html'],
+                setHeaders: (res, path) => {
+                    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+                    res.setHeader('Pragma', 'no-cache');
+                    res.setHeader('Expires', '0');
                 }
-            } catch (e) {
-                console.error('Failed to check config during redirect:', e.message);
-            }
-            next();
-        });
+            }));
+        } else {
+            console.log('🚧 [WebServer] Dashboard Dev Mode active — skipping static file serving.');
+            
+            // In Dev Mode, show a helpful message if user hits the backend port directly
+            this.app.get('/', (req, res) => {
+                res.status(200).send(`
+                    <body style="background:#0a0a0a; color:#eee; font-family:sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; margin:0;">
+                        <h1 style="color:#0096ff;">🚧 Golem Backend is Running (Dev Mode)</h1>
+                        <p>This is the <b>Backend API</b> port (${this.port}).</p>
+                        <div style="background:#1a1a1a; padding:20px; border-radius:12px; border:1px solid #333; text-align:center;">
+                            <p>To access the Dashboard UI with Hot Reloading, please go to:</p>
+                            <a href="http://localhost:3000" style="color:#00ff9d; font-size:24px; text-decoration:none; font-weight:bold;">http://localhost:3000</a>
+                            <p style="font-size:12px; color:#666; margin-top:20px;">Make sure you have run: <code>cd web-dashboard && npm run dev</code></p>
+                        </div>
+                    </body>
+                `);
+            });
+        }
 
-        dashboardRoutes.forEach(route => {
-            this.app.get(route, (req, res) => {
-                const fileName = route === '/dashboard' ? 'dashboard.html' : `${route.replace(/^\//, '')}.html`;
-                const fullPath = path.join(publicPath, fileName);
+        if (!isDevMode) {
+            // Fix Next.js static export routing
+            this.app.get('/', (req, res) => {
+                res.redirect('/dashboard');
+            });
+
+            // Ensure /dashboard and sub-routes are handled for SPA
+            const dashboardRoutes = [
+                '/dashboard',
+                '/dashboard/terminal',
+                '/dashboard/agents',
+                '/dashboard/office',
+                '/dashboard/system-setup'
+            ];
+
+            // 🎯 V9.0.7 解耦：自動導引系統設定 (Auto-Setup)
+            // 在進入 Dashboard 核心頁面之前，檢查系統配置狀態
+            this.app.get(/\/dashboard.*/, (req, res, next) => {
+                const normalizedPath = req.path.replace(/\/$/, "");
+                // 排除設定頁面本身與 API 請求，避免無限重定向
+                if (normalizedPath === '/dashboard/system-setup' || req.path.startsWith('/api/')) {
+                    return next();
+                }
+
+                try {
+                    const ConfigManager = require('../src/config/index');
+                    // V9.0.9 修正：強制檢查初始化標記
+                    // 只有在 SYSTEM_CONFIGURED 為 'true' 時才允許通行
+                    const isConfigured = process.env.SYSTEM_CONFIGURED === 'true';
+
+                    if (!isConfigured) {
+                        console.log(`🚩 [WebServer] System NOT initialized. Redirecting ${req.path} to /dashboard/system-setup`);
+                        return res.redirect('/dashboard/system-setup');
+                    }
+                } catch (e) {
+                    console.error('Failed to check config during redirect:', e.message);
+                }
+                next();
+            });
+
+            dashboardRoutes.forEach(route => {
+                this.app.get(route, (req, res) => {
+                    const fileName = route === '/dashboard' ? 'dashboard.html' : `${route.replace(/^\//, '')}.html`;
+                    const fullPath = path.join(publicPath, fileName);
+                    if (fs.existsSync(fullPath)) {
+                        res.sendFile(fullPath);
+                    } else {
+                        res.sendFile(path.join(publicPath, 'dashboard.html'));
+                    }
+                });
+            });
+
+            // Catch-all fallback for any other /dashboard/* routes
+            this.app.get(/\/dashboard\/.*/, (req, res) => {
+                const normalizedPath = req.path.replace(/\/$/, "");
+                const htmlFileName = `${normalizedPath.replace(/^\//, '')}.html`;
+                const fullPath = path.join(publicPath, htmlFileName);
+
                 if (fs.existsSync(fullPath)) {
                     res.sendFile(fullPath);
                 } else {
+                    // If the exact html file isn't found, try to resolve as a generic SPA fallback
                     res.sendFile(path.join(publicPath, 'dashboard.html'));
                 }
             });
-        });
-
-        // Catch-all fallback for any other /dashboard/* routes
-        this.app.get(/\/dashboard\/.*/, (req, res) => {
-            const normalizedPath = req.path.replace(/\/$/, "");
-            const htmlFileName = `${normalizedPath.replace(/^\//, '')}.html`;
-            const fullPath = path.join(publicPath, htmlFileName);
-
-            if (fs.existsSync(fullPath)) {
-                res.sendFile(fullPath);
-            } else {
-                // If the exact html file isn't found, try to resolve as a generic SPA fallback
-                res.sendFile(path.join(publicPath, 'dashboard.html'));
-            }
-        });
+        }
 
 
         // --- API Routes ---
@@ -1826,7 +1857,8 @@ class WebServer {
 
         // Start Server
         this.server.listen(this.port, () => {
-            const url = `http://localhost:${this.port}/dashboard`;
+            const displayPort = process.env.DASHBOARD_DEV_MODE === 'true' ? 3000 : this.port;
+            const url = `http://localhost:${displayPort}/dashboard`;
             console.log(`🚀 [WebServer] Dashboard running at ${url}`);
 
             if (!process.env.SKIP_BROWSER) {
