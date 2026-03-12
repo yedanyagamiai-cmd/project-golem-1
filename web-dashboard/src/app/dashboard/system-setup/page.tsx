@@ -19,7 +19,7 @@ export default function SystemSetupPage() {
     const [geminiKeys, setGeminiKeys] = useState("");
     const [userDataDir, setUserDataDir] = useState("./golem_memory");
     const [memoryMode, setMemoryMode] = useState<MemoryMode>("browser");
-    const [golemMode, setGolemMode] = useState<"SINGLE" | "MULTI">("MULTI");
+    const golemMode = "SINGLE";
     const [showKeys, setShowKeys] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [isFetching, setIsFetching] = useState(true);
@@ -32,7 +32,6 @@ export default function SystemSetupPage() {
             .then(data => {
                 setUserDataDir(data.userDataDir || "./golem_memory");
                 setMemoryMode((data.golemMemoryMode as MemoryMode) || "browser");
-                setGolemMode(data.golemMode || "MULTI");
                 // 不預填 geminiApiKeys（只顯示是否已設定）
             })
             .catch(console.error)
@@ -158,39 +157,6 @@ export default function SystemSetupPage() {
                                 </p>
                             </div>
                         )}
-                    </div>
-
-                    {/* Golem Mode Selection */}
-                    <div className="bg-gray-900/80 border border-gray-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
-                        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-purple-600 to-pink-400 rounded-t-2xl" />
-
-                        <div className="flex items-center gap-2 mb-5">
-                            <Brain className="w-5 h-5 text-purple-400" />
-                            <h2 className="text-base font-semibold text-white">運行模式設定</h2>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                            {([
-                                { value: "SINGLE", label: "單機模式 (SINGLE)", desc: "適合個人使用，僅啟動單一個 Golem" },
-                                { value: "MULTI", label: "多機模式 (MULTI)", desc: "支援同時管理多個不同人格的 Golem" },
-                            ] as { value: "SINGLE" | "MULTI"; label: string; desc: string }[]).map(opt => (
-                                <button
-                                    key={opt.value}
-                                    type="button"
-                                    onClick={() => setGolemMode(opt.value)}
-                                    className={`p-3 rounded-xl border text-sm font-medium transition-all text-left ${golemMode === opt.value
-                                        ? "bg-purple-950/30 border-purple-600/50 text-purple-300"
-                                        : "bg-gray-950 border-gray-800 text-gray-400 hover:border-gray-700"
-                                        }`}
-                                >
-                                    <div className="flex items-center justify-between mb-0.5">
-                                        <span className="font-bold text-xs">{opt.label}</span>
-                                        {golemMode === opt.value && <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />}
-                                    </div>
-                                    <div className="text-[10px] font-normal opacity-70">{opt.desc}</div>
-                                </button>
-                            ))}
-                        </div>
                     </div>
 
                     {/* Memory Config */}

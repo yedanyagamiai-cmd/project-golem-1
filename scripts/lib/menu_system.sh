@@ -72,11 +72,10 @@ show_menu_tools() {
 
 show_system_tip() {
     local tips=(
-        "Your personal AI agent swarm, at your service."
-        "Did you know? You can add more Golems in golems.json."
+        "Your personal AI agent, at your service."
         "Mainframe stabilized. All systems nominal."
         "Pro Tip: Use 'Doctor' if you encounter any port conflicts."
-        "Neural links established. Golem core active."
+        "Neural link established. Golem core active."
     )
     local tip=${tips[$RANDOM % ${#tips[@]}]}
     echo -e "  ${DIM}💡 提示: $tip${NC}"
@@ -139,14 +138,11 @@ stop_system() {
 
 launch_system() {
     local bg_mode=false
-    local mode=""
     local auth_mode=""
 
     while [[ $# -gt 0 ]]; do
         case "${1:-}" in
             --bg)     bg_mode=true ;;
-            --single) mode="SINGLE" ;;
-            --multi)  mode="MULTI" ;;
             --admin)  auth_mode="ADMIN" ;;
             --chat)   auth_mode="CHAT" ;;
         esac
@@ -156,8 +152,7 @@ launch_system() {
     check_status
 
     if [ "$bg_mode" = true ]; then
-        echo -e "  ${GREEN}🚀 正在以背景模式啟動 Golem v${GOLEM_VERSION}...${NC}"
-        [ -n "$mode" ] && echo -e "  ${DIM}   模式: $mode${NC}"
+        echo -e "  ${GREEN}🚀 正在以背景模式啟動 Golem v${GOLEM_VERSION} (Single)...${NC}"
         [ -n "$auth_mode" ] && echo -e "  ${DIM}   權限: $auth_mode${NC}"
         echo -e "  ${DIM}   所有輸出將重新導向至 logs/golem.log${NC}"
         
@@ -165,7 +160,6 @@ launch_system() {
         
         # 建立環境變數前綴
         local env_cmd="env"
-        [ -n "$mode" ] && env_cmd="$env_cmd GOLEM_MODE=$mode"
         [ -n "$auth_mode" ] && env_cmd="$env_cmd TG_AUTH_MODE=$auth_mode"
         
         nohup $env_cmd npm start > "$SCRIPT_DIR/logs/golem.log" 2>&1 &
@@ -173,7 +167,7 @@ launch_system() {
         echo "$pid" > "$SCRIPT_DIR/.golem.pid"
         echo -e "  ${CYAN}✅ 系統已在背景啟動 (PID: $pid)${NC}"
         echo -e "  ${DIM}   你可以使用 'tail -f logs/golem.log' 查看日誌${NC}"
-        log "System launched in background (PID: $pid, Mode: $mode, Auth: $auth_mode)"
+        log "System launched in background (PID: $pid, Auth: $auth_mode)"
         sleep 1
         return
     fi
@@ -198,16 +192,15 @@ launch_system() {
         fi
     fi
 
-    echo -e "  ${CYAN}🚀 正在啟動 Golem v${GOLEM_VERSION} 控制台...${NC}"
+    echo -e "  ${CYAN}🚀 正在啟動 Golem v${GOLEM_VERSION} 控制台 (Single Mode)...${NC}"
     echo -e "  ${DIM}   正在載入 Neural Memory 與戰術介面...${NC}"
     echo -e "  ${DIM}   若要離開，請按 'q' 或 Ctrl+C${NC}"
     echo ""
     sleep 1
-    log "System launched (Mode: $mode, Auth: $auth_mode)"
+    log "System launched (Auth: $auth_mode)"
 
     # 建立環境變數前綴
     local env_cmd="env"
-    [ -n "$mode" ] && env_cmd="$env_cmd GOLEM_MODE=$mode"
     [ -n "$auth_mode" ] && env_cmd="$env_cmd TG_AUTH_MODE=$auth_mode"
 
     $env_cmd npm run dashboard

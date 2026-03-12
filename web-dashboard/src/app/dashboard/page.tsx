@@ -273,11 +273,9 @@ export default function DashboardPage() {
                             建立第一個 Golem
                         </Button>
                     </Link>
-                    {isSingleNode && (
-                        <div className="pt-2 p-3 rounded-xl bg-amber-950/10 border border-amber-900/20 text-amber-200/50 text-[10px] text-left">
-                            <p>💡 偵測到<strong>單機模式</strong>：向導將協助您快速設定 <code>.env</code> 文件。</p>
-                        </div>
-                    )}
+                    <div className="pt-2 p-3 rounded-xl bg-amber-950/10 border border-amber-900/20 text-amber-200/50 text-[10px] text-left">
+                        <p>💡 提示：系統向導將協助您快速設定 <code>.env</code> 文件。</p>
+                    </div>
                 </div>
             </div>
         );
@@ -314,7 +312,7 @@ export default function DashboardPage() {
                             <div className="flex justify-between items-center text-sm border-b border-gray-800 pb-2">
                                 <span className="text-gray-400">Mode</span>
                                 <span className="text-cyan-400">
-                                    {isSingleNode ? "Single Node" : "Multi-Agent"}
+                                    Single Node
                                 </span>
                             </div>
                             <div className="flex justify-between items-center text-sm border-b border-gray-800 pb-2">

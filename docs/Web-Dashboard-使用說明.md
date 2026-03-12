@@ -67,9 +67,9 @@ node server.js     # 預設：http://localhost:3000
 
 ---
 
-### 🏢 辦公室模式 (`/dashboard/office`)
+### 🏢 自動化中心 (`/dashboard/office`)
 
-模擬多 Golem 協作的**辦公室場景**，每個 Golem 扮演不同職能角色（研究員、編輯、評審等），以接力方式完成複雜任務。
+管理系統的**自動化任務**，包含排程檢查、系統自省與定期維護日誌。
 
 ---
 
@@ -99,21 +99,7 @@ node server.js     # 預設：http://localhost:3000
 
 ---
 
-## 三、Golem Switcher
-
-左側側欄頂部有一個 **Active Golem 下拉選單**，所有操作（終端機、記憶查詢、技能管理）均針對當前選擇的 Golem 實例。
-
-```
-左側欄
- ┌─────────────────┐
- │ Active Golem    │
- │ [golem_A  ▼]   │  ← 切換後，所有頁面的操作對象改變
- ├─────────────────┤
- │ 戰術控制台       │
- │ 終端機控制台     │
- │ ...             │
- └─────────────────┘
-```
+左側側欄頂部顯示 **Active Golem 狀態**（預設為 golem_A），所有操作（終端機、記憶查詢、技能管理）均針對此實體。
 
 ---
 
@@ -123,8 +109,7 @@ node server.js     # 預設：http://localhost:3000
 
 1. 輸入 Telegram Bot Token
 2. 輸入管理員 ID
-3. 選擇運行模式（SINGLE / MULTI）
-4. 確認 → 寫入 `.env` → 重啟 Bot
+3. 確認 → 寫入 `.env` → 重啟 Bot
 
 > 若 `activeGolemStatus === 'pending_setup'`，系統會自動重導向至 `/dashboard/setup`。
 

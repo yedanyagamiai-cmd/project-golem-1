@@ -13,9 +13,7 @@ class ChatLogManager {
     constructor(options = {}) {
         const baseLogDir = options.logDir || path.join(process.cwd(), 'logs');
         this.golemId = options.golemId || 'default';
-        this.logDir = options.isSingleMode
-            ? baseLogDir
-            : path.join(baseLogDir, this.golemId);
+        this.logDir = baseLogDir;
         this.retentionMs = options.retentionMs || LOG_RETENTION_MS;
 
         // 🏛️ 分層子目錄

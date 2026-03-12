@@ -64,8 +64,8 @@ Security Manager 攔截高危指令，DOM Doctor 自動修復 Selector，KeyChai
 ### 🔧 技能膠囊系統
 技能可打包成 Base64 字串跨實例分享，`/learn` 指令讓 AI 自動生成新技能並熱載入。
 
-### 🌐 Multi-Golem 多實體
-一台主機運行多個獨立 Golem，每個有獨立大腦、獨立記憶、獨立對話隊列，並可透過內部事件匯流排互相通訊。
+### 🏝️ 單機架構優化
+專為單機運行的穩定性設計，簡化的配置流程，集中式的記憶管理與權限控制。
 
 </td>
 </tr>
@@ -205,7 +205,7 @@ ADMIN_ID=你的_Telegram_User_ID
 
 # 選填
 DISCORD_TOKEN=你的_Discord_Token
-GOLEM_MODE=SINGLE                 # 或留空（使用 golems.json 多機模式）
+GOLEM_MODE=SINGLE                 # 強制單機模式
 GOLEM_MEMORY_MODE=browser         # browser / qmd / native
 GEMINI_API_KEYS=key1,key2         # 多組 Key 逗號分隔
 ```
@@ -234,24 +234,8 @@ GEMINI_API_KEYS=key1,key2         # 多組 Key 逗號分隔
 「把這段程式碼存到伺服器上執行」
 ```
 
-### Multi-Golem 設定（`golems.json`）
-
-```json
-[
-  {
-    "id": "golem_A",
-    "tgToken": "Bot_Token_A",
-    "tgAuthMode": "ADMIN",
-    "adminId": "你的_TG_ID"
-  },
-  {
-    "id": "golem_B",
-    "tgToken": "Bot_Token_B",
-    "tgAuthMode": "CHAT",
-    "chatId": "-100群組ID"
-  }
-]
-```
+### 系統設定
+Golem v9.1+ 採用簡化的單機架構。所有的 API Keys 與 機器人 Token 建議直接透過 **Web Dashboard** 的「系統設定」頁面完成，無需手動編輯複雜的 JSON 檔案。
 
 ---
 
@@ -271,7 +255,7 @@ npm run dev   # http://localhost:3000
 </tr>
 <tr>
 <td>👥 <b>Agent 會議室</b><br/>互動式多智能體介面</td>
-<td>🏢 <b>辦公室模式</b><br/>多 Golem 接力工作流</td>
+<td>🏢 <b>自動化中心</b><br/>排程與自省任務管理</td>
 <td>⚙️ <b>系統總表</b><br/>環境設定 / 日誌管理</td>
 <td>🚀 <b>Setup 精靈</b><br/>首次初始化引導</td>
 </tr>
@@ -284,12 +268,9 @@ npm run dev   # http://localhost:3000
 ```
 project-golem/
 ├── index.js                  # 主入口：Bot 初始化 / 路由 / 排程器
-├── golems.json               # Multi-Golem 設定
 ├── setup.sh / setup.bat      # 一鍵安裝腳本
 ├── docs/                     # 📄 完整技術文件
-├── logs/
-│   ├── single/               # SINGLE 模式日誌
-│   └── multi/<golemId>/      # MULTI 模式（各實體獨立）
+├── logs/                     # 系統運作日誌 (SINGLE 模式專用)
 ├── src/
 │   ├── core/                 # GolemBrain / NeuroShunter / ConversationManager
 │   ├── managers/             # ChatLogManager / AutonomyManager / SkillManager

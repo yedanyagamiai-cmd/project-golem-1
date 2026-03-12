@@ -35,11 +35,8 @@ async function run(ctx) {
         const finalTime = dateObj.toISOString();
 
         // --- ✨ 路徑隔離 (Path Isolation) ---
-        // 根據運行模式 (SINGLE/MULTI) 與 golemId 決定儲存路徑
-        const golemId = (ctx.brain && ctx.brain.golemId) || 'golem_A';
-        const logDir = ConfigManager.GOLEM_MODE === 'SINGLE'
-            ? ConfigManager.LOG_BASE_DIR
-            : path.join(ConfigManager.LOG_BASE_DIR, golemId);
+        // 根據 golemId 決定儲存路徑 (純 SINGLE 模式)
+        const logDir = ConfigManager.LOG_BASE_DIR;
 
         if (!fs.existsSync(logDir)) {
             fs.mkdirSync(logDir, { recursive: true });

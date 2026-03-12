@@ -66,20 +66,10 @@ config_wizard() {
     ENABLE_WEB_DASHBOARD="true"
 }
 
-# ─── Step 3.5: Golems Config Wizard (已遷移至 Web Dashboard) ───
+# ─── Step 3.5: Golems Config Wizard (已停用) ───
 golems_wizard() {
     echo ""
-    box_top
-    box_line_colored "  ${BOLD}${CYAN}🌐 Golem 多機配置 → 已遷移至 Web Dashboard${NC}"
-    box_sep
-    box_line_colored "  ${DIM}現在可直接透過 Web Dashboard 新增並管理 Golem 實體：${NC}"
-    box_line_colored ""
-    box_line_colored "  ${GREEN}1.${NC} 啟動系統:  ${BOLD}./setup.sh --start${NC}"
-    box_line_colored "  ${GREEN}2.${NC} 開啟瀏覽器: ${BOLD}http://localhost:${DASHBOARD_PORT:-3000}${NC}"
-    box_line_colored "  ${GREEN}3.${NC} 點擊「新增 Golem」填入 Token 即可啟動"
-    box_line_colored ""
-    box_line_colored "  ${DIM}golems.json 仍可手動編輯，格式不變。${NC}"
-    box_bottom
+    echo -e "  ${YELLOW}ℹ  多機配置功能已在此版本中移除，請使用單機模式。${NC}"
     echo ""
     read -r -p "  按 Enter 返回主選單..."
 }

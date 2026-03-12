@@ -13,10 +13,7 @@ const ConfigManager = require('../../config');
 async function run(ctx) {
     try {
         // --- ✨ 路徑隔離 (Path Isolation) ---
-        const golemId = (ctx.brain && ctx.brain.golemId) || 'golem_A';
-        const logDir = ConfigManager.GOLEM_MODE === 'SINGLE'
-            ? ConfigManager.LOG_BASE_DIR
-            : path.join(ConfigManager.LOG_BASE_DIR, golemId);
+        const logDir = ConfigManager.LOG_BASE_DIR;
 
         const scheduleFile = path.join(logDir, 'schedules.json');
 

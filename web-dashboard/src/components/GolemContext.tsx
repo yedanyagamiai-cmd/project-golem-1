@@ -33,7 +33,7 @@ const GolemContext = createContext<GolemContextType>({
     startGolem: async () => false,
     isSystemConfigured: true,
     isLoadingSystem: true,
-    isSingleNode: false,
+    isSingleNode: true,
 });
 
 export const useGolem = () => useContext(GolemContext);
@@ -44,7 +44,7 @@ export function GolemProvider({ children }: { children: React.ReactNode }) {
     const [isLoadingGolems, setIsLoadingGolems] = useState(true);
     const [isSystemConfigured, setIsSystemConfigured] = useState(false);
     const [isLoadingSystem, setIsLoadingSystem] = useState(true);
-    const [isSingleNode, setIsSingleNode] = useState(false);
+    const [isSingleNode] = useState(true);
 
     const fetchGolems = async () => {
         setIsLoadingGolems(true);
@@ -81,7 +81,6 @@ export function GolemProvider({ children }: { children: React.ReactNode }) {
             .then(res => res.json())
             .then(data => {
                 setIsSystemConfigured(data.isSystemConfigured ?? true);
-                setIsSingleNode(data.isSingleNode ?? false);
             })
             .catch(() => setIsSystemConfigured(true)) // on error, don't block
             .finally(() => setIsLoadingSystem(false));

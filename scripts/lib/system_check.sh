@@ -1,61 +1,14 @@
 #!/bin/bash
 
 # ─── Golem Configuration Status ───
-GOLEMS_ACTIVE_COUNT=0
-GOLEMS_LIST=""
-GOLEMS_JSON_PATH="$SCRIPT_DIR/golems.json"
+GOLEMS_ACTIVE_COUNT=1
+GOLEMS_LIST="golem_A (Single Mode)"
 INSTALLERS_DIR="$LIB_DIR/installers"
 
 # 載入模組化安裝程式
 [ -f "$INSTALLERS_DIR/node_nvm.sh" ] && source "$INSTALLERS_DIR/node_nvm.sh"
 [ -f "$INSTALLERS_DIR/homebrew.sh" ] && source "$INSTALLERS_DIR/homebrew.sh"
 [ -f "$INSTALLERS_DIR/system_tools.sh" ] && source "$INSTALLERS_DIR/system_tools.sh"
-
-check_multi_golems() {
-    # 先讀取 .env 中的 GOLEM_MODE
-    local golem_mode=""
-    if [ -f "$DOT_ENV_PATH" ]; then
-        golem_mode=$(grep '^GOLEM_MODE=' "$DOT_ENV_PATH" 2>/dev/null | cut -d'=' -f2 | tr -d ' ')
-    fi
-
-    if [ "$golem_mode" = "SINGLE" ]; then
-        # 強制單機模式，忽略 golems.json
-        if [ -f "$DOT_ENV_PATH" ]; then
-            source "$DOT_ENV_PATH" 2>/dev/null
-            if [ -n "${TELEGRAM_TOKEN:-}" ] && [ "$TELEGRAM_TOKEN" != "你的BotToken" ]; then
-                GOLEMS_ACTIVE_COUNT=1
-                GOLEMS_LIST="golem_A (單機模式)"
-            fi
-        fi
-        return
-    fi
-
-    if [ -f "$GOLEMS_JSON_PATH" ]; then
-        # 利用 Node.js 解析 JSON 取得 ID 列表與數量
-        local result
-        result=$(node -e "
-            try {
-                const cfg = require('$GOLEMS_JSON_PATH');
-                if (Array.isArray(cfg)) {
-                    const ids = cfg.map(g => g.id).join(', ');
-                    console.log(cfg.length + '|' + ids);
-                } else { console.log('0|'); }
-            } catch (e) { console.log('0|'); }
-        " 2>/dev/null)
-        
-        GOLEMS_ACTIVE_COUNT=$(echo "$result" | cut -d'|' -f1)
-        GOLEMS_LIST=$(echo "$result" | cut -d'|' -f2)
-        CURRENT_GOLEM_MODE="MULTI"
-    else
-        # Fallback to single golem mode
-        GOLEMS_ACTIVE_COUNT=0
-        if [ -n "${TELEGRAM_TOKEN:-}" ] && [ "$TELEGRAM_TOKEN" != "你的BotToken" ]; then
-            GOLEMS_ACTIVE_COUNT=1
-            GOLEMS_LIST="golem_A (單體模式)"
-        fi
-        CURRENT_GOLEM_MODE="SINGLE"
-    fi
-}
 
 check_status() {
     # Node Version
@@ -87,13 +40,9 @@ check_status() {
         KEYS_SET=false
     fi
 
-    # Golem Instances
-    check_multi_golems
-    if [ "${GOLEMS_ACTIVE_COUNT:-0}" -gt 0 ]; then
-        STATUS_GOLEMS="${CYAN}${GOLEMS_ACTIVE_COUNT} 個實體${NC}"
-    else
-        STATUS_GOLEMS="${DIM}未配置${NC}"
-    fi
+    # Golem Status (Single Mode)
+    export CURRENT_GOLEM_MODE="SINGLE"
+    STATUS_GOLEMS="${CYAN}單機模式 (Single Edition)${NC}"
 
     # Web Dashboard
     IsDashEnabled=false
