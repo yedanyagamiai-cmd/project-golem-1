@@ -67,7 +67,6 @@ case "${1:-}" in
             case "${1:-}" in
                 --bg)     launch_args="$launch_args --bg" ;;
                 --single) launch_args="$launch_args --single" ;;
-                --multi)  launch_args="$launch_args --multi" ;;
                 --admin)  launch_args="$launch_args --admin" ;;
                 --chat)   launch_args="$launch_args --chat" ;;
             esac
@@ -82,7 +81,7 @@ case "${1:-}" in
     --doctor)    npm run doctor ;;
     --config)    step_check_env; config_wizard ;;
     --status)    print_status ;;
-    --version)   echo "Project Golem v${GOLEM_VERSION} (Titan Chronos)" ;;
+    --version)   echo "Project Golem v${GOLEM_VERSION} (Single-Golem Edition)" ;;
     --help|-h)
         echo ""
         echo -e "${BOLD}Project Golem v${GOLEM_VERSION} Setup Script${NC}"
@@ -103,7 +102,7 @@ case "${1:-}" in
         echo "  --version     顯示版本號"
         echo "  --help, -h    顯示此說明"
         echo ""
-        echo "Golem 設定 (API Keys / Mode / Bot Token 等) 請透過 Web Dashboard 管理:"
+        echo "Golem 設定 (API Keys / Bot Token 等) 請透過 Web Dashboard 管理:"
         echo "  1. 執行 ./setup.sh --start"
         echo "  2. 開啟瀏覽器 http://localhost:3000"
         echo "  3. 進入「系統設定」完成初始化即可"

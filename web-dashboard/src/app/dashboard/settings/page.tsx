@@ -459,6 +459,7 @@ export default function SettingsPage() {
     useEffect(() => {
         fetchConfig();
         fetchStatus();
+        fetchLogInfo();
     }, []);
 
     const fetchConfig = async () => {
@@ -516,9 +517,7 @@ export default function SettingsPage() {
             }
         });
 
-        const golemsChanged = JSON.stringify(config.golems) !== JSON.stringify(originalConfig.golems);
-
-        if (!hasEnvChanges && !golemsChanged) {
+        if (!hasEnvChanges) {
             setStatusMessage({ type: 'warning', text: "沒有任何變更需要儲存" });
             setIsSaving(false);
             return;
@@ -526,8 +525,7 @@ export default function SettingsPage() {
 
         try {
             const payload = {
-                env: changedEnv,
-                golems: golemsChanged ? config.golems : undefined
+                env: changedEnv
             };
 
             const res = await fetch("/api/config", {
@@ -592,32 +590,6 @@ export default function SettingsPage() {
             ...prev,
             env: { ...prev.env, [key]: value }
         }));
-    };
-
-    const handleChangeGolem = (index: number, key: keyof GolemConfig, value: string) => {
-        setConfig(prev => {
-            const newGolems = [...prev.golems];
-            newGolems[index] = { ...newGolems[index], [key]: value };
-            return { ...prev, golems: newGolems };
-        });
-    };
-
-    const addGolem = () => {
-        setConfig(prev => ({
-            ...prev,
-            golems: [
-                ...prev.golems,
-                { id: `golem_${Math.random().toString(36).substr(2, 5)}`, tgToken: '', tgAuthMode: 'ADMIN', adminId: '' }
-            ]
-        }));
-    };
-
-    const removeGolem = (index: number) => {
-        setConfig(prev => {
-            const newGolems = [...prev.golems];
-            newGolems.splice(index, 1);
-            return { ...prev, golems: newGolems };
-        });
     };
 
     if (isLoading) {
@@ -803,24 +775,14 @@ export default function SettingsPage() {
                             <h2 className="text-lg font-semibold text-gray-300 mb-4 flex items-center gap-2">
                                 ⚙️ 系統進階設定
                             </h2>
-                            <div className="grid grid-cols-2 gap-4">
-                                <SettingField
-                                    label="執行模式"
-                                    keyName="GOLEM_MODE"
-                                    placeholder="SINGLE"
-                                    desc="SINGLE 或是 MULTI"
-                                    value={config.env.GOLEM_MODE || ""}
-                                    onChange={(val) => handleChangeEnv("GOLEM_MODE", val)}
-                                />
-                                <SettingField
-                                    label="測試模式"
-                                    keyName="GOLEM_TEST_MODE"
-                                    placeholder="false"
-                                    desc="true 或 false"
-                                    value={config.env.GOLEM_TEST_MODE || ""}
-                                    onChange={(val) => handleChangeEnv("GOLEM_TEST_MODE", val)}
-                                />
-                            </div>
+                            <SettingField
+                                label="測試模式"
+                                keyName="GOLEM_TEST_MODE"
+                                placeholder="false"
+                                desc="true 或 false"
+                                value={config.env.GOLEM_TEST_MODE || ""}
+                                onChange={(val) => handleChangeEnv("GOLEM_TEST_MODE", val)}
+                            />
 
                             <SettingField
                                 label="記憶引擎模式"
@@ -1180,25 +1142,7 @@ export default function SettingsPage() {
                                                 }
                                             }}
                                         />
-                                        <button
-                                            onClick={() => {
-                                                const input = document.getElementById('newCommandInput') as HTMLInputElement;
-                                                const val = input.value.trim();
-                                                if (val) {
-                                                    const poolStr = config.env.CUSTOM_COMMANDS || "";
-                                                    const currentPool = poolStr.split(',').map(s => s.trim()).filter(Boolean);
-                                                    if (!currentPool.includes(val)) {
-                                                        handleChangeEnv("CUSTOM_COMMANDS", [...currentPool, val].join(','));
-                                                        input.value = "";
-                                                    }
-                                                }
-                                            }}
-                                            className="flex-shrink-0 whitespace-nowrap bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-500/50 rounded px-3 py-1.5 text-xs font-medium transition-colors"
-                                        >
-                                            新增
-                                        </button>
                                     </div>
-
                                     <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar h-[19rem]">
                                         {(config.env.CUSTOM_COMMANDS || "")
                                             .split(',')
@@ -1218,7 +1162,7 @@ export default function SettingsPage() {
                                                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <span className="text-[10px] text-blue-400 mr-2">拖曳啟用</span>
                                                         <button
-                                                            onClick={() => {
+                                                            onClick={async () => {
                                                                 const poolStr = config.env.CUSTOM_COMMANDS || "";
                                                                 const currentPool = poolStr.split(',').map(s => s.trim()).filter(Boolean);
                                                                 handleChangeEnv("CUSTOM_COMMANDS", currentPool.filter(c => c !== cmd).join(','));
@@ -1244,101 +1188,6 @@ export default function SettingsPage() {
                     </div>
                 </div>
 
-                {/* Section: MULTI-GOLEM CONFIGS (golems.json) */}
-                <div className="mt-8 border-t border-gray-800/60 pt-8">
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-                            <Users className="w-5 h-5 text-indigo-400" />
-                            多機組態 (Multi-Golem)
-                        </h2>
-                        <button
-                            onClick={addGolem}
-                            className="text-sm px-3 py-1.5 bg-indigo-900/40 text-indigo-300 hover:bg-indigo-900/80 border border-indigo-700/50 rounded-md transition-colors"
-                        >
-                            + 新增配置
-                        </button>
-                    </div>
-
-                    <div className="space-y-6">
-                        {config.golems.map((golem, index) => (
-                            <div key={`golem-${index}`} className="bg-gray-900/40 border border-indigo-900/30 rounded-xl p-5 shadow-sm relative group">
-                                <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                        onClick={() => removeGolem(index)}
-                                        className="text-xs px-2 py-1 bg-red-900/30 hover:bg-red-800/60 text-red-400 rounded transition-colors"
-                                    >
-                                        移除
-                                    </button>
-                                </div>
-
-                                <h3 className="text-md font-mono text-indigo-300 mb-4 pb-2 border-b border-gray-800/50">
-                                    Entity ID: {golem.id}
-                                </h3>
-
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-2">
-                                    <div className="space-y-4">
-                                        <SettingField
-                                            label="Entity ID (ID)"
-                                            keyName={`golemId_${index}`}
-                                            value={golem.id}
-                                            onChange={(val) => handleChangeGolem(index, 'id', val)}
-                                            placeholder="ex: golem_B"
-                                        />
-                                        <SettingField
-                                            label="Role (任務指派)"
-                                            keyName={`golemRole_${index}`}
-                                            value={golem.role || ""}
-                                            onChange={(val) => handleChangeGolem(index, 'role', val)}
-                                            placeholder="ex: 客服專員"
-                                        />
-                                        <SettingField
-                                            label="Bot Token"
-                                            keyName={`golemToken_${index}`}
-                                            value={golem.tgToken || ""}
-                                            onChange={(val) => handleChangeGolem(index, 'tgToken', val)}
-                                            placeholder="123456:ABC..."
-                                            isSecret
-                                            desc="若修改此欄位需重啟系統"
-                                        />
-                                    </div>
-                                    <div className="space-y-4">
-                                        <SettingField
-                                            label="Auth Mode"
-                                            keyName={`golemAuthMode_${index}`}
-                                            value={golem.tgAuthMode || ""}
-                                            onChange={(val) => handleChangeGolem(index, 'tgAuthMode', val)}
-                                            placeholder="ADMIN 或是 CHAT"
-                                        />
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <SettingField
-                                                label="Admin ID"
-                                                keyName={`golemAdmin_${index}`}
-                                                value={golem.adminId || ""}
-                                                onChange={(val) => handleChangeGolem(index, 'adminId', val)}
-                                                placeholder="使用者 ID"
-                                                isSecret
-                                            />
-                                            <SettingField
-                                                label="Chat ID"
-                                                keyName={`golemChat_${index}`}
-                                                value={golem.chatId || ""}
-                                                onChange={(val) => handleChangeGolem(index, 'chatId', val)}
-                                                placeholder="群組 ID"
-                                                isSecret
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-
-                        {config.golems.length === 0 && (
-                            <div className="text-center py-10 border border-dashed border-gray-800 rounded-xl">
-                                <p className="text-gray-500 font-mono">尚無多機配置 (golems.json為空)</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
             </div>
         </div>
     );

@@ -25,7 +25,7 @@ async function run(ctx) {
     const logManager = new ChatLogManager({
         golemId: actualBrain.golemId || args.golemId || 'default',
         logDir: ConfigManager.LOG_BASE_DIR,
-        isSingleMode: ConfigManager.GOLEM_MODE === 'SINGLE'
+        isSingleMode: true
     });
 
     try {

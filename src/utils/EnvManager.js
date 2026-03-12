@@ -8,8 +8,6 @@ class EnvManager {
     constructor() {
         this.envPath = path.resolve(process.cwd(), '.env');
         this.examplePath = path.resolve(process.cwd(), '.env.example');
-        this.golemsPath = path.resolve(process.cwd(), 'golems.json');
-        this.golemsExamplePath = path.resolve(process.cwd(), 'golems.example.json');
     }
 
     /**
@@ -96,43 +94,6 @@ class EnvManager {
         }
 
         return false;
-    }
-
-    /**
-     * 讀取 golems.json，回傳陣列
-     */
-    readGolemsJson() {
-        try {
-            if (!fs.existsSync(this.golemsPath)) {
-                if (fs.existsSync(this.golemsExamplePath)) {
-                    // 自動從範本複製
-                    fs.copyFileSync(this.golemsExamplePath, this.golemsPath);
-                } else {
-                    return [];
-                }
-            }
-            const content = fs.readFileSync(this.golemsPath, 'utf8');
-            if (!content.trim()) return [];
-            return JSON.parse(content);
-        } catch (e) {
-            console.error("Failed to read golems.json:", e);
-            return [];
-        }
-    }
-
-    /**
-     * 更新 golems.json
-     * @param {Array} golemsArray 新的多機設定陣列
-     */
-    updateGolemsJson(golemsArray) {
-        if (!Array.isArray(golemsArray)) return false;
-        try {
-            fs.writeFileSync(this.golemsPath, JSON.stringify(golemsArray, null, 4), 'utf8');
-            return true;
-        } catch (e) {
-            console.error("Failed to write golems.json:", e);
-            return false;
-        }
     }
 }
 

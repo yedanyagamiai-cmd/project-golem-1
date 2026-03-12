@@ -46,8 +46,7 @@ class GolemBrain {
         // ── 對話日誌 ──
         this.chatLogManager = new ChatLogManager({
             golemId: this.golemId,
-            logDir: options.logDir || ConfigManager.LOG_BASE_DIR,
-            isSingleMode: options.isSingleMode !== undefined ? options.isSingleMode : (ConfigManager.GOLEM_MODE === 'SINGLE')
+            logDir: options.logDir || ConfigManager.LOG_BASE_DIR
         });
     }
 

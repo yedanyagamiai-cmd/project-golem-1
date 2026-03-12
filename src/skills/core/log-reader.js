@@ -16,7 +16,7 @@ async function run(ctx) {
         const ConfigManager = require('../../config');
         logManager = new ChatLogManager({
             logDir: ConfigManager.LOG_BASE_DIR,
-            isSingleMode: ConfigManager.GOLEM_MODE === 'SINGLE'
+            isSingleMode: true
         });
     }
     // 每日摘要存放於 daily/ 子目錄（金字塔記憶架構 Tier 1）

@@ -41,7 +41,7 @@ function DashboardSidebar({
                             Golem v9.0
                         </h1>
                         <p className="text-xs text-gray-500 mt-1 whitespace-nowrap">
-                            {isSingleNode ? "Bot Control Center" : "MultiAgent War Room"}
+                            Bot Control Center
                         </p>
                     </div>
                 )}
@@ -70,28 +70,6 @@ function DashboardSidebar({
                 </div>
             )}
 
-            {/* Add New Golem Button */}
-            {!isSingleNode && (isSidebarOpen ? (
-                <div className="px-4 py-2 border-b border-gray-800">
-                    <Link
-                        href="/dashboard/agents/create"
-                        className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-indigo-900/20 rounded-lg transition-colors border border-dashed border-indigo-800/40 hover:border-indigo-600/60"
-                    >
-                        <UserPlus className="w-3.5 h-3.5" />
-                        <span>新增 Golem</span>
-                    </Link>
-                </div>
-            ) : (
-                <div className="flex justify-center py-2 border-b border-gray-800">
-                    <Link
-                        href="/dashboard/agents/create"
-                        title="新增 Golem"
-                        className="w-8 h-8 flex items-center justify-center text-indigo-400 hover:text-indigo-300 hover:bg-indigo-900/20 rounded-lg transition-colors"
-                    >
-                        <UserPlus className="w-4 h-4" />
-                    </Link>
-                </div>
-            ))}
 
             <nav className="flex-1 py-4 space-y-2 overflow-y-auto flex flex-col items-center">
                 {navItems.map((item) => {

@@ -35,11 +35,10 @@ class AutonomyManager {
         console.log(`🕒 [Autonomy] 定時檢查日誌壓縮狀態 (雙重門檻掃描)...`);
         try {
             const ChatLogManager = require('../managers/ChatLogManager');
-            // ✅ [H-1 Fix] 傳入正確 golemId/logDir/isSingleMode，確保掃描正確目錄
+            // ✅ [H-1 Fix] 傳入正確 golemId/logDir，確保掃描正確目錄
             const logManager = new ChatLogManager({
                 golemId: this.golemId,
-                logDir: ConfigManager.LOG_BASE_DIR,
-                isSingleMode: ConfigManager.GOLEM_MODE === 'SINGLE'
+                logDir: ConfigManager.LOG_BASE_DIR
             });
             const logDir = logManager.dirs.hourly;
 
@@ -86,9 +85,7 @@ class AutonomyManager {
         const updatedSchedules = [];
 
         // --- ✨ 路徑隔離 (Path Isolation) ---
-        const logDir = ConfigManager.GOLEM_MODE === 'SINGLE'
-            ? ConfigManager.LOG_BASE_DIR
-            : path.join(ConfigManager.LOG_BASE_DIR, this.golemId);
+        const logDir = ConfigManager.LOG_BASE_DIR;
 
         const scheduleFile = path.join(logDir, 'schedules.json');
 
@@ -212,8 +209,7 @@ class AutonomyManager {
         const ChatLogManager = require('../managers/ChatLogManager');
         const logManager = new ChatLogManager({
             golemId: this.golemId,
-            logDir: ConfigManager.LOG_BASE_DIR,
-            isSingleMode: ConfigManager.GOLEM_MODE === 'SINGLE'
+            logDir: ConfigManager.LOG_BASE_DIR
         });
 
         const recentSummaries = logManager.readTier('daily', 3);
