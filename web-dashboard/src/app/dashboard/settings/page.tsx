@@ -512,7 +512,7 @@ const BackupSection = () => {
     useEffect(() => {
         if (!isRollingBack) return;
         
-        const socket = (window as any).io();
+        const socket = io();
         socket.on('system:update_progress', (data: any) => {
             setProgress(data.progress || 0);
             setStatusMsg(data.message);
