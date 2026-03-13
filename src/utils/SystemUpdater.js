@@ -177,11 +177,13 @@ class SystemUpdater {
                 const srcPath = path.join(rootDir, file);
                 const destPath = path.join(finalBackupDir, file);
                 try {
+                    if (fs.existsSync(destPath)) {
+                        fs.rmSync(destPath, { recursive: true, force: true });
+                    }
                     fs.renameSync(srcPath, destPath);
                 } catch (e) {
                     // fallback to copy and delete if rename fails (across devices)
                     this.broadcast(io, 'running', `正在備份 ${file}...`, 25);
-                    // Minimal dependency implementation of move
                     await this.execAsync(`cp -R "${srcPath}" "${destPath}" && rm -rf "${srcPath}"`);
                 }
             }
@@ -199,13 +201,19 @@ class SystemUpdater {
             this.broadcast(io, 'running', '正在套用新版本檔案...', 60);
             const newFiles = fs.readdirSync(tempCloneDir);
             for (const file of newFiles) {
-                if (file === '.git') continue; // We keep the old .git if possible? No, user wants fresh.
-                // Actually, move the new .git too so it stays a git repo.
+                if (file === '.git') continue; 
                 const srcPath = path.join(tempCloneDir, file);
                 const destPath = path.join(rootDir, file);
+                
+                if (fs.existsSync(destPath)) {
+                    fs.rmSync(destPath, { recursive: true, force: true });
+                }
                 fs.renameSync(srcPath, destPath);
             }
             // Move .git as well to maintain repo state
+            if (fs.existsSync(path.join(rootDir, '.git'))) {
+                fs.rmSync(path.join(rootDir, '.git'), { recursive: true, force: true });
+            }
             fs.renameSync(path.join(tempCloneDir, '.git'), path.join(rootDir, '.git'));
             fs.rmSync(tempCloneDir, { recursive: true, force: true });
 
@@ -283,6 +291,9 @@ class SystemUpdater {
                 const srcPath = path.join(rootDir, file);
                 const destPath = path.join(finalBackupDir, file);
                 try {
+                    if (fs.existsSync(destPath)) {
+                        fs.rmSync(destPath, { recursive: true, force: true });
+                    }
                     fs.renameSync(srcPath, destPath);
                 } catch (e) {
                     await this.execAsync(`cp -R "${srcPath}" "${destPath}" && rm -rf "${srcPath}"`);
@@ -305,6 +316,9 @@ class SystemUpdater {
             for (const file of newFiles) {
                 const srcPath = path.join(sourceDir, file);
                 const destPath = path.join(rootDir, file);
+                if (fs.existsSync(destPath)) {
+                    fs.rmSync(destPath, { recursive: true, force: true });
+                }
                 fs.renameSync(srcPath, destPath);
             }
             fs.rmSync(tempDir, { recursive: true, force: true });
