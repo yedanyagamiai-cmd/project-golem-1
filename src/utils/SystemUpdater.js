@@ -196,8 +196,8 @@ class SystemUpdater {
 
             const files = fs.readdirSync(rootDir);
             for (const file of files) {
-                // EXCLUDE essential files from initial move to keep the process alive
-                if (file === 'backups' || file === 'node_modules' || file === '.git' || file === 'web-dashboard' || file === 'src') continue;
+                // EXCLUDE essential files and the current temp clone directory from being moved into backup
+                if (file === 'backups' || file === 'node_modules' || file === '.git' || file === 'web-dashboard' || file === 'src' || file.startsWith('temp_clone_')) continue;
                 const srcPath = path.join(rootDir, file);
                 const destPath = path.join(finalBackupDir, file);
                 try {
@@ -219,6 +219,9 @@ class SystemUpdater {
 
             // 4. Move Files from temp into root (Swap)
             this.broadcast(io, 'running', '正在套用新版本檔案...', 70);
+            if (!fs.existsSync(tempCloneDir)) {
+                throw new Error(`臨時複製目錄不存在 (可能 Clone 失敗): ${tempCloneDir}`);
+            }
             const newFiles = fs.readdirSync(tempCloneDir);
             for (const file of newFiles) {
                 if (file === '.git') continue; 
