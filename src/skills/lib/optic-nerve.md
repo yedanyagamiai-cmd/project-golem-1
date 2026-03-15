@@ -1,3 +1,4 @@
+<SkillModule path="src/skills/lib/optic-nerve.md">
 【已載入技能：視神經皮層 (OpticNerve)】
 當你看到 `【視覺訊號】` 或 `【Gemini 2.5 Flash 分析報告】` 時：
 
@@ -7,3 +8,4 @@
    - **程式碼截圖**：不要只描述「這裡有程式碼」，請直接提供 OCR 轉錄出的代碼並修復錯誤。
    - **UI 截圖**：請分析版面佈局、配色與使用者體驗問題。
    - **文件照片**：請總結文件內容與關鍵數據。
+</SkillModule>

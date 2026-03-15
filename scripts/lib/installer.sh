@@ -1,4 +1,76 @@
 #!/bin/bash
+ 
+# ─── Step 0: Node.js 20 Detection ───
+step_prepare_node_version() {
+    echo -e "  🏥 檢查系統環境 (Node.js)..."
+    log "Checking Node.js version"
+    
+    check_status
+    if [ "$NODE_OK" = false ]; then
+        echo -e "    ${RED}✖${NC} 核心環境: Node.js ${RED}$NODE_VER${NC} (建議版本: v20)"
+        log "Node.js version mismatch: $NODE_VER"
+        
+        if [ "$NVM_OK" = true ]; then
+            echo ""
+            box_top
+            box_line_colored "  ${YELLOW}💡 偵測到您已安裝 NVM，是否要現在切換至 Node.js 20？${NC}"
+            box_bottom
+            echo ""
+            if confirm_action "切換至 Node.js 20？"; then
+                if switch_node_version; then
+                    echo -e "\n${GREEN}成功切換版本！${NC}"
+                    sleep 1
+                    check_status # 重新偵測環境
+                    return 0
+                fi
+            fi
+        else
+            ui_warn "建議手動安裝 Node.js v20 (Titan Chronos 推薦版本) 以確保最佳相容性。"
+            echo -e "    ${DIM}下載地址: https://nodejs.org/dist/latest-v20.x/${NC}"
+            sleep 2
+        fi
+    else
+        echo -e "    ${GREEN}✔${NC} 核心環境: Node.js ${GREEN}$NODE_VER${NC} (符合需求)"
+    fi
+    echo ""
+}
+
+# ─── Step 0.5: Running Process Check ───
+step_stop_running_system() {
+    echo -e "  🔍 檢查執行中進程..."
+    log "Checking for running processes before installation"
+    
+    # [MAGIC MODE] 安裝前無條件超級清洗 (包含失聯的 zombie port 3001)
+    if [ "${GOLEM_MAGIC_MODE:-false}" = "true" ]; then
+        echo -e "    ${CYAN}🧹 魔法模式：正在深度清理所有相關進程與佔用通訊埠...${NC}"
+        stop_system false >/dev/null 2>&1
+        echo -e "    ${GREEN}✔${NC} 系統環境已淨空"
+        echo ""
+        return
+    fi
+    
+    check_status
+    if [ "$IS_RUNNING" = true ] || lsof -i :3000 -t &>/dev/null || lsof -i :3001 -t &>/dev/null; then
+        echo ""
+        box_top
+        box_line_colored "  ${RED}${BOLD}⚠️  偵測到系統正在執行中或通訊埠被佔用${NC}            "
+        box_line_colored "  ${DIM}為避免檔案佔用或資料損壞，建議在安裝前先關閉進程。${NC}   "
+        box_bottom
+        echo ""
+        
+        if confirm_action "是否要自動關閉相關進程並繼續？"; then
+            stop_system false
+            ui_success "所有相關進程已關閉。"
+            sleep 1
+        else
+            ui_error "安裝已取消。請先手動關閉程序再重新執行。"
+            exit 1
+        fi
+    else
+        echo -e "    ${GREEN}✔${NC} 查無佔用進程或通訊埠，可安全安裝"
+    fi
+    echo ""
+}
 
 # ─── Step 1: File Integrity ───
 step_check_files() {
@@ -40,22 +112,14 @@ step_check_env() {
     if [ ! -f "$DOT_ENV_PATH" ]; then
         if [ -f "$SCRIPT_DIR/.env.example" ]; then
             cp "$SCRIPT_DIR/.env.example" "$DOT_ENV_PATH"
-            echo -e "    ${YELLOW}ℹ${NC}  已從範本 ${BOLD}.env.example${NC} 建立 ${BOLD}.env${NC}"
+            echo -e "    ${GREEN}✔${NC}  已從範本 ${BOLD}.env.example${NC} 建立 ${BOLD}.env${NC}"
             log "Created .env from example"
         else
             echo -e "    ${YELLOW}ℹ${NC}  找不到 .env.example，將建立基本 .env 檔案"
             cat > "$DOT_ENV_PATH" << 'ENVEOF'
 TG_AUTH_MODE=ADMIN
-TG_CHAT_ID=
-TELEGRAM_TOKEN=
-ADMIN_ID=
-DISCORD_TOKEN=
-DISCORD_ADMIN_ID=
-USER_DATA_DIR=./golem_memory
-GOLEM_TEST_MODE=false
+# Golem Setup will be handled via Web Dashboard
 DASHBOARD_PORT=3000
-GOLEM_MEMORY_MODE=browser
-GITHUB_REPO=
 ENABLE_WEB_DASHBOARD=true
 ENVEOF
             echo -e "    ${GREEN}✔${NC}  已建立基本 .env 設定檔"
@@ -67,174 +131,83 @@ ENVEOF
     echo ""
 }
 
-# ─── Step 3: Config Wizard ───
+# ─── Step 3: Config Wizard (simplified — Bot configs now in Web Dashboard) ───
 config_wizard() {
-    echo ""
-    echo ""
-    box_top
-    box_line_colored "  ${BOLD}${CYAN}🧙 環境變數配置精靈${NC}"
-    box_line_colored "  ${DIM}設定 API Keys、Bot Tokens 與系統選項${NC}"
-    box_sep
-    box_line_colored "  ${DIM}提示: 直接按 Enter 保留目前值 │ 輸入 [B] 返回上一步${NC}"
-    box_bottom
-    echo ""
-
-    # 讀取現有值
-    [ -f "$DOT_ENV_PATH" ] && source "$DOT_ENV_PATH" 2>/dev/null
-
-    local step=1
-    local total=6
-
-    while [ $step -le $total ]; do
-        case $step in
-            1)
-                echo -e "  ${BOLD}${MAGENTA}[${step}/${total}]${NC} ${BOLD}Google Gemini API Keys${NC}"
-                echo -e "  ${DIM}取得: https://aistudio.google.com/app/apikey${NC}"
-                local masked_gemini; masked_gemini=$(mask_value "${GEMINI_API_KEYS:-}")
-                echo -e "  目前: ${CYAN}${masked_gemini}${NC}"
-                read -r -p "  👉 輸入新 Keys (留空保留): " input
-                input=$(echo "$input" | xargs 2>/dev/null)
-                if [ -n "$input" ]; then update_env "GEMINI_API_KEYS" "$input"; GEMINI_API_KEYS="$input"; fi
-                step=$((step + 1)); echo "" ;;
-            2)
-                echo -e "  ${BOLD}${MAGENTA}[${step}/${total}]${NC} ${BOLD}Telegram Bot Token${NC}"
-                local masked_tg; masked_tg=$(mask_value "${TELEGRAM_TOKEN:-}")
-                echo -e "  目前: ${CYAN}${masked_tg}${NC}"
-                read -r -p "  👉 輸入新 Token (留空保留 / B 返回): " input
-                input=$(echo "$input" | xargs 2>/dev/null)
-                if [[ "$input" =~ ^[Bb]$ ]]; then step=$((step - 1)); continue; fi
-                if [ -n "$input" ]; then update_env "TELEGRAM_TOKEN" "$input"; TELEGRAM_TOKEN="$input"; fi
-                step=$((step + 1)); echo "" ;;
-            3)
-                echo -e "  ${BOLD}${MAGENTA}[${step}/${total}]${NC} ${BOLD}Telegram 驗證模式${NC}"
-                echo -e "  目前: ${CYAN}${TG_AUTH_MODE:-ADMIN}${NC}"
-                read -r -p "  👉 選擇模式 [A] 個人 Admin ID / [C] 群組 Chat ID / [B] 返回: " input
-                input=$(echo "$input" | xargs 2>/dev/null)
-                if [[ "$input" =~ ^[Bb]$ ]]; then step=$((step - 1)); continue; fi
-                
-                # 如果使用者直接按 Enter，則根據目前值決定分支
-                local current_mode="${TG_AUTH_MODE:-ADMIN}"
-                if [ -z "$input" ]; then
-                    if [[ "$current_mode" == "CHAT" ]]; then input="c"; else input="a"; fi
-                fi
-
-                if [[ "$input" =~ ^[Cc]$ ]]; then
-                    update_env "TG_AUTH_MODE" "CHAT"
-                    TG_AUTH_MODE="CHAT"
-                    echo -e "  ${BOLD}${MAGENTA}[${step}.1/${total}]${NC} ${BOLD}Telegram Chat ID (群組/頻道 ID)${NC}"
-                    echo -e "  目前: ${CYAN}${TG_CHAT_ID:-${DIM}(未設定)${NC}}${NC}"
-                    read -r -p "  👉 輸入新 Chat ID (留空保留): " subinput
-                    subinput=$(echo "$subinput" | xargs 2>/dev/null)
-                    if [ -n "$subinput" ]; then update_env "TG_CHAT_ID" "$subinput"; TG_CHAT_ID="$subinput"; fi
-                elif [[ "$input" =~ ^[Aa]$ ]]; then
-                    update_env "TG_AUTH_MODE" "ADMIN"
-                    TG_AUTH_MODE="ADMIN"
-                    echo -e "  ${BOLD}${MAGENTA}[${step}.1/${total}]${NC} ${BOLD}Telegram Admin User ID (個人 ID)${NC}"
-                    echo -e "  目前: ${CYAN}${ADMIN_ID:-${DIM}(未設定)${NC}}${NC}"
-                    read -r -p "  👉 輸入新 Admin ID (留空保留): " subinput
-                    subinput=$(echo "$subinput" | xargs 2>/dev/null)
-                    if [ -n "$subinput" ]; then
-                        if [[ "$subinput" =~ ^-?[0-9]+$ ]]; then update_env "ADMIN_ID" "$subinput"; ADMIN_ID="$subinput"; fi
-                    fi
-                fi
-                step=$((step + 1)); echo "" ;;
-            4)
-                echo -e "  ${BOLD}${MAGENTA}[${step}/${total}]${NC} ${BOLD}Discord Bot Token${NC}"
-                local masked_dc; masked_dc=$(mask_value "${DISCORD_TOKEN:-}")
-                echo -e "  目前: ${CYAN}${masked_dc}${NC}"
-                read -r -p "  👉 輸入新 Token (留空保留 / B 返回): " input
-                input=$(echo "$input" | xargs 2>/dev/null)
-                if [[ "$input" =~ ^[Bb]$ ]]; then step=$((step - 1)); continue; fi
-                if [ -n "$input" ]; then update_env "DISCORD_TOKEN" "$input"; DISCORD_TOKEN="$input"; fi
-                step=$((step + 1)); echo "" ;;
-            5)
-                echo -e "  ${BOLD}${MAGENTA}[${step}/${total}]${NC} ${BOLD}Discord Admin User ID${NC}"
-                echo -e "  目前: ${CYAN}${DISCORD_ADMIN_ID:-${DIM}(未設定)${NC}}${NC}"
-                read -r -p "  👉 輸入新 ID (留空保留 / B 返回): " input
-                input=$(echo "$input" | xargs 2>/dev/null)
-                if [[ "$input" =~ ^[Bb]$ ]]; then step=$((step - 1)); continue; fi
-                if [ -n "$input" ]; then
-                    if [[ "$input" =~ ^[0-9]+$ ]]; then update_env "DISCORD_ADMIN_ID" "$input"; DISCORD_ADMIN_ID="$input"; fi
-                fi
-                step=$((step + 1)); echo "" ;;
-            6)
-                echo -e "  ${BOLD}${MAGENTA}[${step}/${total}]${NC} ${BOLD}Web Dashboard${NC}"
-                echo -e "  目前: ${CYAN}${ENABLE_WEB_DASHBOARD:-false}${NC}"
-                read -r -p "  👉 啟用 Web Dashboard? [Y/n/B] (留空保留): " input
-                input=$(echo "$input" | xargs 2>/dev/null)
-                if [[ "$input" =~ ^[Bb]$ ]]; then step=$((step - 1)); continue; fi
-                if [[ "$input" =~ ^[Yy]$ ]]; then update_env "ENABLE_WEB_DASHBOARD" "true"; ENABLE_WEB_DASHBOARD="true"
-                elif [[ "$input" =~ ^[Nn]$ ]]; then update_env "ENABLE_WEB_DASHBOARD" "false"; ENABLE_WEB_DASHBOARD="false"; fi
-                step=$((step + 1)); echo "" ;;
-        esac
-    done
-
-    # ─── Summary Confirmation ────────────────────────────
-    echo ""
-    box_top
-    box_line_colored "  ${BOLD}📋 配置摘要${NC}"
-    box_sep
-    local mg; mg=$(mask_value "${GEMINI_API_KEYS:-}")
-    local mt; mt=$(mask_value "${TELEGRAM_TOKEN:-}")
-    local md; md=$(mask_value "${DISCORD_TOKEN:-}")
-    box_line_colored "  Gemini Keys:    ${CYAN}${mg}${NC}"
-    box_line_colored "  TG Token:       ${CYAN}${mt}${NC}"
-    if [ "$TG_AUTH_MODE" = "CHAT" ]; then
-        box_line_colored "  TG Auth Mode:   ${CYAN}群組模式 (CHAT)${NC}"
-        box_line_colored "  TG Chat ID:     ${CYAN}${TG_CHAT_ID:-未設定}${NC}"
-    else
-        box_line_colored "  TG Auth Mode:   ${CYAN}個人模式 (ADMIN)${NC}"
-        box_line_colored "  TG Admin ID:    ${CYAN}${ADMIN_ID:-未設定}${NC}"
-    fi
-    box_line_colored "  DC Token:       ${CYAN}${md}${NC}"
-    box_line_colored "  DC Admin ID:    ${CYAN}${DISCORD_ADMIN_ID:-未設定}${NC}"
-    box_line_colored "  Dashboard:      ${CYAN}${ENABLE_WEB_DASHBOARD:-false}${NC}"
-    box_sep
-    box_line_colored "  ${GREEN}${BOLD}✅ 配置已儲存到 .env${NC}"
-    box_bottom
-    echo ""
-    log "Config wizard completed"
-    sleep 1
+    # 自動啟用 Web Dashboard，不顯示任何資訊
+    update_env "ENABLE_WEB_DASHBOARD" "true"
+    ENABLE_WEB_DASHBOARD="true"
 }
+
+# ─── Step 3.5: Golems Config Wizard (已停用) ───
+golems_wizard() {
+    echo ""
+    echo -e "  ${YELLOW}ℹ  多機配置功能已在此版本中移除，請使用單機模式。${NC}"
+    echo ""
+    read -r -p "  按 Enter 返回主選單..."
+}
+
+
 
 step_install_core() {
     echo -e "  📦 安裝核心依賴..."
     echo -e "  ${DIM}  (puppeteer, blessed, gemini-ai, discord.js ...)${NC}"
     log "Installing core dependencies"
-    spinner_start "npm install 安裝中"
-    npm install --no-fund --no-audit >> "$LOG_FILE" 2>&1
-    local exit_code=$?
-    spinner_stop $([ "$exit_code" -eq 0 ] && echo true || echo false)
-    if [ "$exit_code" -ne 0 ]; then
-        echo -e "  ${RED}${BOLD}❌ npm install 失敗${NC}"
-        echo -e "  ${YELLOW}💡 可能原因:${NC}"
-        echo -e "     • 網路連線問題 → 請確認網路是否正常"
-        echo -e "     • Node.js 版本不符 → 需要 v18+ (目前: $(node -v 2>/dev/null || echo N/A))"
-        echo -e "     • 權限問題 → 嘗試 ${BOLD}sudo npm install${NC}"
-        echo -e "  ${DIM}  詳細日誌: $LOG_FILE${NC}"
+    
+    local arch=$(uname -m)
+    local os=$(os_detect)
+    local npm_flags="--no-fund --no-audit"
+    
+    # ─── 架構優化 (ARM64 / Apple Silicon) ───
+    if [[ "$arch" == "arm64" ]] || [[ "$arch" == "aarch64" ]]; then
+        ui_info "偵測到 ARM64 架構 (${arch})，正在調整安裝策略..."
+        if [[ "$os" == "linux" ]] || [[ "$os" == "wsl" ]]; then
+            # Linux ARM64 上的 Puppeteer 預設下載 amd64 Chromium 會失敗
+            ui_warn "Linux ARM64 環境建議使用系統 Chromium 以確保相容性。"
+            echo -e "  ${DIM}提示: sudo apt install chromium-browser -y${NC}"
+            export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+        fi
+    fi
+
+    if ! run_quiet_step "npm install 安裝中" npm install $npm_flags; then
+        echo -e "  ${RED}${BOLD}❌ 依賴安裝失敗${NC}"
+        echo -e "  ${YELLOW}💡 建議解決方法:${NC}"
+        echo -e "     • 🌐 ${BOLD}檢查網路${NC}：如果是 npm 連線問題，請確認是否需要設定 Proxy。"
+        echo -e "     • 🔄 ${BOLD}Node.js 版本${NC}：確保版本 >= v20 (目前: $(node -v 2>/dev/null || echo N/A))。"
+        echo -e "     • 🛡️  ${BOLD}權限問題${NC}：如果是 EACCES 錯誤，嘗試使用 ${BOLD}sudo npm install${NC}。"
+        if [[ "$arch" == "arm64" ]]; then
+            echo -e "     • 🍎 ${CYAN}ARM64/M1/M2${NC}：若編譯失敗，請安裝系統編譯工具：${DIM}xcode-select --install${NC}"
+        fi
+        echo ""
+        echo -e "  ${CYAN}🏥 您可以執行實用的診斷工具：${BOLD}./setup.sh --doctor${NC}"
+        echo -e "  ${DIM}詳細錯誤記錄於: $LOG_FILE${NC}"
         log "FATAL: npm install failed"
         exit 1
     fi
 
     # 確保 TUI 套件存在
     if [ ! -d "$SCRIPT_DIR/node_modules/blessed" ]; then
-        echo -e "  ${YELLOW}ℹ${NC}  補安裝 blessed 介面庫..."
-        spinner_start "安裝 blessed 套件"
-        npm install blessed blessed-contrib express --no-fund --no-audit >> "$LOG_FILE" 2>&1
-        spinner_stop
+        ui_info "補安裝 blessed 介面庫..."
+        run_quiet_step "安裝 blessed 套件" npm install blessed blessed-contrib express $npm_flags
     fi
-    echo -e "  ${GREEN}  ✅ 核心依賴安裝完成${NC}\n"
+    ui_success "核心依賴安裝完成\n"
 }
 
 step_install_dashboard() {
     echo -e "  🌐 設定 Web Dashboard..."
     log "Setting up dashboard"
     [ -f "$DOT_ENV_PATH" ] && source "$DOT_ENV_PATH" 2>/dev/null
-    if [ "$ENABLE_WEB_DASHBOARD" != "true" ]; then
+    # 若變數未設定但目錄存在，預設為開啟
+    if [ -z "${ENABLE_WEB_DASHBOARD:-}" ] && [ -d "$SCRIPT_DIR/web-dashboard" ]; then
+        ENABLE_WEB_DASHBOARD="true"
+        update_env "ENABLE_WEB_DASHBOARD" "true"
+    fi
+
+    if [ "${ENABLE_WEB_DASHBOARD:-false}" != "true" ]; then
         echo -e "    ${DIM}⏩ Dashboard 已停用，跳過安裝${NC}\n"; return
     fi
+
     if [ ! -d "$SCRIPT_DIR/web-dashboard" ]; then
-        echo -e "    ${RED}⚠️  找不到 web-dashboard 目錄，自動停用 Dashboard${NC}"
+        ui_warn "找不到 web-dashboard 目錄，自動停用 Dashboard"
         update_env "ENABLE_WEB_DASHBOARD" "false"
         echo ""
         return
@@ -242,86 +215,193 @@ step_install_dashboard() {
 
     echo -e "    ${CYAN}偵測到 Dashboard 模組，開始安裝...${NC}"
 
-    spinner_start "安裝 Dashboard 依賴"
-    (cd "$SCRIPT_DIR/web-dashboard" && npm install --no-fund --no-audit >> "$LOG_FILE" 2>&1)
-    dep_exit=$?
-    spinner_stop $([ "$dep_exit" -eq 0 ] && echo true || echo false)
+    pushd "$SCRIPT_DIR/web-dashboard" > /dev/null
     
-    if [ "$dep_exit" -ne 0 ]; then
-        echo -e "    ${RED}❌ Dashboard 依賴安裝失敗${NC}"
-        echo -e "    ${DIM}詳細日誌: $LOG_FILE${NC}"
+    if ! run_quiet_step "安裝 Dashboard 依賴" npm install --no-fund --no-audit; then
+        ui_error "Dashboard 依賴安裝失敗"
         update_env "ENABLE_WEB_DASHBOARD" "false"
         log "Dashboard deps install failed"
+        popd > /dev/null
         echo ""
         return
     fi
 
-    spinner_start "建置 Dashboard (Next.js Build)"
-    (cd "$SCRIPT_DIR/web-dashboard" && npm run build >> "$LOG_FILE" 2>&1)
-    local build_exit=$?
-    spinner_stop $([ "$build_exit" -eq 0 ] && echo true || echo false)
-
-    if [ "$build_exit" -ne 0 ]; then
-        echo -e "    ${RED}❌ Dashboard 建置失敗${NC}"
-        echo -e "    ${DIM}詳細日誌: $LOG_FILE${NC}"
-        update_env "ENABLE_WEB_DASHBOARD" "false"
-        log "Dashboard build failed"
+    if [ "${DASHBOARD_DEV_MODE:-false}" = "true" ]; then
+        ui_info "偵測到 DASHBOARD_DEV_MODE=true，跳過 Next.js 建置步驟。"
+        update_env "ENABLE_WEB_DASHBOARD" "true"
+        log "Dashboard build skipped (Dev Mode)"
+    elif ! run_quiet_step "建置 Dashboard (Next.js Build)" npm run build; then
+        ui_warn "Dashboard 建置失敗！"
+        ui_warn "這通常是因為環境或依賴問題，您可以之後在選單中單獨嘗試 [4] 建置。"
+        update_env "ENABLE_WEB_DASHBOARD" "true"  # 保持為 true，讓 launch_system 的自動修復邏輯能介入
+        log "Dashboard build failed, kept as enabled for later retry"
     else
-        echo -e "    ${GREEN}✅ Dashboard 建置完成${NC}"
+        ui_success "Dashboard 建置完成"
         update_env "ENABLE_WEB_DASHBOARD" "true"
         log "Dashboard build succeeded"
     fi
+    
+    popd > /dev/null
     echo ""
+}
+
+# ─── Clean Dependencies (Preserve configs) ───
+run_clean_dependencies() {
+    echo ""
+    box_top
+    box_line_colored "  ${BOLD}${YELLOW}🧹 警告：即將清除所有套件依賴 (node_modules)${NC}        "
+    box_line_colored "  ${DIM}此操作將保留：.env, golems.json, 記憶資料, 日誌${NC}      "
+    box_bottom
+    echo ""
+    if ! confirm_action "確定要清除依賴並重新初始化環境嗎？"; then
+        echo -e "  ${DIM}已取消操作。${NC}\n"
+        sleep 1
+        return
+    fi
+
+    # 停止系統服務以釋放檔案鎖
+    stop_system false
+
+    echo -e "  ${CYAN}🧹 正在清除套件依賴與建置檔...${NC}"
+    log "Running clean dependencies - preserving configs/data"
+    
+    # 清除主程式依賴
+    rm -rf "$SCRIPT_DIR/node_modules" "$SCRIPT_DIR/package-lock.json"
+    echo -e "    ${GREEN}✔${NC} 已移除主程式 node_modules"
+    
+    # 清除 Dashboard 依賴與建置結果
+    if [ -d "$SCRIPT_DIR/web-dashboard" ]; then
+        rm -rf "$SCRIPT_DIR/web-dashboard/node_modules" "$SCRIPT_DIR/web-dashboard/package-lock.json" "$SCRIPT_DIR/web-dashboard/.next" "$SCRIPT_DIR/web-dashboard/out"
+        echo -e "    ${GREEN}✔${NC} 已移除 Dashboard node_modules 與 out 目錄"
+    fi
+    
+    echo -e "  ${GREEN}✅ 清除完成！${NC}"
+    echo -e "  ${DIM}提示：您可以接著執行「Install」重新安裝套件。${NC}"
+    log "Clean dependencies completed"
+    sleep 2
+}
+
+# ─── Clean Init ───
+run_clean_init() {
+    echo ""
+    box_top
+    box_line_colored "  ${BOLD}${RED}⚠️  警告：這將會刪除所有本地資料！${NC}                      "
+    box_line_colored "  ${DIM}即將刪除：node_modules、記憶資料、logs 等目錄${NC}        "
+    box_bottom
+    echo ""
+    if ! confirm_action "確定要執行完全初始化嗎？"; then
+        echo -e "  ${DIM}已取消初始化。${NC}\n"
+        sleep 1
+        return
+    fi
+
+    # ✅ 優先停止系統服務再刪除資源
+    stop_system false
+
+    echo -e "  ${CYAN}🧹 正在清理系統資料...${NC}"
+    log "Running clean init - stopping system and deleting directories"
+    
+    # 刪除各項目錄
+    rm -rf "$SCRIPT_DIR/node_modules" "$SCRIPT_DIR/package-lock.json"
+    echo -e "    ${GREEN}✔${NC} 刪除主程式依賴 (node_modules)"
+    
+    if [ -d "$SCRIPT_DIR/web-dashboard" ]; then
+        rm -rf "$SCRIPT_DIR/web-dashboard/node_modules" "$SCRIPT_DIR/web-dashboard/package-lock.json" "$SCRIPT_DIR/web-dashboard/.next" "$SCRIPT_DIR/web-dashboard/out"
+        echo -e "    ${GREEN}✔${NC} 刪除 Dashboard 依賴與建置快取"
+    fi
+    
+    local mem_dir="${USER_DATA_DIR:-./golem_memory}"
+    # Resolving if it's relative
+    if [[ "$mem_dir" == ./* ]]; then
+        mem_dir="$SCRIPT_DIR/${mem_dir#./}"
+    elif [[ "$mem_dir" != /* ]]; then
+        mem_dir="$SCRIPT_DIR/$mem_dir"
+    fi
+    rm -rf "$mem_dir"
+    echo -e "    ${GREEN}✔${NC} 刪除 Golem 記憶資料庫"
+    
+    # Logs directory
+    rm -rf "$SCRIPT_DIR/logs"
+    echo -e "    ${GREEN}✔${NC} 刪除系統日誌 (logs)"
+
+    # .env file
+    if [ -f "$DOT_ENV_PATH" ]; then
+        rm -f "$DOT_ENV_PATH"
+        echo -e "    ${GREEN}✔${NC} 刪除環境設定檔 (.env)"
+    fi
+    
+    echo -e "  ${GREEN}✅ 清理完成！請重新啟動或進行手動配置。${NC}"
+    sleep 2
+    
+    # recreate log dir since we just deleted it
+    mkdir -p "$SCRIPT_DIR/logs"
 }
 
 # ─── Full Install ───
 run_full_install() {
     timer_start
-    local total_steps=7
+    local total_steps=8
     log "Full install started"
 
     echo -e "  ${BOLD}${CYAN}📦 開始完整安裝流程${NC}"
+    echo -e "  ${DIM}$(pick_tagline)${NC}"
     echo -e "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 
+    # Step Check Process
+    progress_bar 1 $total_steps "檢查執行中進程"
+    echo ""
+    step_stop_running_system
+
+    # Step 0: Node Check
+    progress_bar 2 $total_steps "檢查 Node.js 版本"
+    echo ""
+    step_prepare_node_version
+
     # Step 1: Check files
-    progress_bar 1 $total_steps "檢查核心檔案"
+    progress_bar 3 $total_steps "檢查核心檔案"
     echo ""
     step_check_files
 
     # Step 2: Check env
-    progress_bar 2 $total_steps "檢查環境設定"
+    progress_bar 4 $total_steps "檢查環境設定"
     echo ""
     step_check_env
 
-    # Step 3: Config wizard
-    progress_bar 3 $total_steps "配置精靈"
-    echo ""
-    config_wizard
+    # Step 3: Configure .env (Gemini Keys + System Options)
+    # 註：如果使用者已提供 .env.example，則直接使用，不強制進入配置精靈
+    # progress_bar 5 $total_steps "配置環境變數"
+    # echo ""
+    # config_wizard
 
     # Step 4: Install core deps
-    progress_bar 4 $total_steps "安裝核心依賴"
+    progress_bar 6 $total_steps "安裝核心依賴"
     echo ""
     step_install_core
 
     # Step 5: Install dashboard
-    progress_bar 5 $total_steps "安裝 Dashboard"
+    progress_bar 7 $total_steps "安裝 Dashboard"
     echo ""
     step_install_dashboard
 
-    # Step 6: Health check
-    progress_bar 6 $total_steps "健康檢查"
+    # Step 6: Health check & Verification
+    progress_bar 8 $total_steps "系統健康檢查 & 驗證"
     echo ""
     check_status
     run_health_check
+    
+    echo -e "  🏥 正在執行系統環境最後驗證 (System Doctor)..."
+    if npm run doctor -- --quiet; then
+        ui_success "環境驗證通過！系統地基穩固。"
+    else
+        ui_warn "環境發現小狀況，請參考上方的診斷建議。"
+    fi
 
-    # Step 7: Done
-    progress_bar 7 $total_steps "完成"
-    echo ""
     local elapsed; elapsed=$(timer_elapsed)
     log "Full install completed in $elapsed"
     step_final "$elapsed"
 }
+
 
 step_final() {
     local elapsed="${1:-}"
@@ -329,6 +409,11 @@ step_final() {
     box_top
     box_line_colored "  ${GREEN}${BOLD}🎉 部署成功！${NC}"
     box_line_colored "  ${GREEN}${BOLD}   Golem v${GOLEM_VERSION} (Titan Chronos) 已就緒${NC}"
+    box_sep
+    box_line_colored "  ${BOLD}下一步操作：${NC}                                          "
+    box_line_colored "  1. 🌐 開啟瀏覽器存取 ${BOLD}Dashboard${NC} 完成 API 設定 "
+    box_line_colored "  2. 📝 在 Dashboard 中填入您的 ${BOLD}Gemini API Key${NC}"
+    box_line_colored "  3. 🤖 新增您第一個傀儡實體並填入 ${BOLD}Bot Token${NC}"
     box_sep
     [ -n "$elapsed" ] && box_line_colored "  ⏱️  安裝耗時: ${CYAN}${elapsed}${NC}"
     box_line_colored "  📋 安裝日誌: ${DIM}${LOG_FILE}${NC}"

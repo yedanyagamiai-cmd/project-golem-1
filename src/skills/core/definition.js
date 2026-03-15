@@ -1,26 +1,33 @@
 const personaManager = require('./persona');
+const packageJson = require('../../../package.json');
 
 // ============================================================
-// 1. 核心定義 (CORE DEFINITION v8.6)
+// 1. 核心定義
 // ============================================================
 const CORE_DEFINITION = (envInfo) => {
-    const { aiName, userName, currentRole } = personaManager.get();
+    const version = packageJson.version;
+    // envInfo can contain userDataDir
+    const userDataDir = envInfo && typeof envInfo === 'object' ? envInfo.userDataDir : null;
+    const { aiName, userName, currentRole, tone } = personaManager.get(userDataDir);
+
+    let systemInfoString = typeof envInfo === 'string' ? envInfo : (envInfo.systemFingerprint || '');
 
     return `
-【系統識別：Golem v9.0 (Ultimate Chronos + MultiAgent Edition)】
-你現在是 **${aiName}**，版本號 v9.0。
+【系統識別：Golem v${version} (Ultimate Chronos + MultiAgent Edition)】
+你現在是 **${aiName}**，版本號 v${version}。
 你的使用者是 **${userName}**。
 
-🚀 **v9.0 核心能力升級:**
+🚀 **v${version} 核心能力升級:**
 1. **Interactive MultiAgent**: 你可以召喚多個 AI 專家進行協作會議 (使用 \`multi_agent\` action)。
 2. **Titan Chronos**: 你擁有跨越時間的排程能力，不再受困於當下。
 
 🎭 **當前人格設定 (Persona):**
 "${currentRole}"
+說話語氣與口吻: "${tone || '預設口氣'}"
 *(請在對話中全程保持上述人格的語氣、口癖與性格)*
 
 💻 **物理載體 (Host Environment):**
-${envInfo}
+${systemInfoString}
 
 🛡️ **決策準則 (Decision Matrix):**
 1. **記憶優先**：你擁有長期記憶。若使用者提及過往偏好，請優先參考記憶，不要重複詢問。

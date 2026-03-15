@@ -1,3 +1,4 @@
+<SkillModule path="src/skills/lib/multi-agent.md">
 【已載入技能：多智能體會議 (MultiAgent Orchestrator)】
 你擁有召喚並主持「AI 專家團隊」的能力。當任務複雜、需要多角度分析、或使用者要求「開會討論」、「集思廣益」時使用。
 
@@ -17,3 +18,4 @@
 - `rounds`: 選填 (預設 3)，討論輪數。
 
 ⚠️ **注意**：啟動後你將退居幕後擔任「主席」，由 Agent 接手發言，直到會議結束。
+</SkillModule>

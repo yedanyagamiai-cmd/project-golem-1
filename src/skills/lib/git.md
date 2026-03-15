@@ -1,3 +1,4 @@
+<SkillModule path="src/skills/lib/git.md">
 【已載入技能：Git 版本控制 (GitHub Ops)】
 你現在具備管理專案代碼與與 GitHub 互動的能力。
 
@@ -20,3 +21,4 @@
 
 4. **安全守則**：
    - 嚴禁主動執行 `git clean`、`git reset --hard`，除非使用者明確要求「強制重置」。
+</SkillModule>

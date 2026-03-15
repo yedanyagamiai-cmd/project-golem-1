@@ -40,9 +40,38 @@ class SystemUpgrader {
 
             // 1. Git Pull / Reset
             await ctx.reply("📥 正在從 GitHub 同步最新源碼...");
+
             execSync('git fetch --all', { cwd: process.cwd() });
-            execSync('git reset --hard origin/main', { cwd: process.cwd() });
-            console.log("✅ Git 同步完成");
+
+            const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: process.cwd() }).toString().trim();
+            const remoteBranches = execSync('git branch -r', { cwd: process.cwd() }).toString().trim().split('\n').map(b => b.trim());
+            const remotes = execSync('git remote', { cwd: process.cwd() }).toString().trim().split('\n');
+
+            let targetRemote = remotes.includes('upstream') ? 'upstream' : 'origin';
+            let targetRef = `${targetRemote}/${currentBranch}`;
+
+            // 尋找最佳匹配 (Priority: upstream > origin > others)
+            const priorityRemotes = ['upstream', 'origin', ...remotes.filter(r => r !== 'upstream' && r !== 'origin')];
+            let foundMatch = false;
+            for (const r of priorityRemotes) {
+                if (remoteBranches.includes(`${r}/${currentBranch}`)) {
+                    targetRemote = r;
+                    targetRef = `${r}/${currentBranch}`;
+                    foundMatch = true;
+                    break;
+                }
+            }
+
+            if (!foundMatch) {
+                console.warn(`⚠️ 找不到與目前分支 ${currentBranch} 匹配的遠端分支，嘗試使用 ${targetRemote}/main`);
+                if (remoteBranches.includes(`${targetRemote}/main`)) {
+                    targetRef = `${targetRemote}/main`;
+                }
+            }
+
+            console.log(`🎯 [Upgrader] Target Ref: ${targetRef}`);
+            execSync(`git reset --hard ${targetRef}`, { cwd: process.cwd() });
+            console.log(`✅ Git 動態同步完成 (${targetRef})`);
 
             // 2. Clean Install dependencies
             await ctx.reply("📦 正在重新安裝依賴套件 (全乾淨安裝)...");
@@ -81,19 +110,8 @@ class SystemUpgrader {
                 }
             }
 
-            await ctx.reply("🚀 系統更新完成！正在進行神經系統重啟...");
-
-            // Use a slight timeout to let message send
-            setTimeout(() => {
-                const subprocess = spawn(process.argv[0], process.argv.slice(1), {
-                    detached: true,
-                    stdio: 'ignore',
-                    cwd: process.cwd(),
-                    env: { ...process.env, GOLEM_RESTARTED: 'true' }
-                });
-                subprocess.unref();
-                process.exit(0);
-            }, 1500);
+            await ctx.reply("🚀 系統更新完成！\n\n⚠️ 由於環境相容性考量，\n請您手動重新執行 `./setup.sh` 以套用最新變更。");
+            console.log("✅ Update complete. Manual restart required by user.");
 
         } catch (e) {
             console.error("❌ 全量更新失敗:", e);

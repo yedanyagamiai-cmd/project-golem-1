@@ -23,11 +23,18 @@ class DashboardPlugin {
     constructor() {
         // 1. 保存原始的 Console 方法並初始化 UI 元件與管理器
         this.manager = new DashboardManager();
-        // 初始化螢幕
-        this.view = new TerminalView({
-            title: '🦞 Golem v9.0 戰術控制台 (MultiAgent Edition)',
-            onExit: () => this.detach()
-        });
+        // 初始化螢幕 (如果沒有禁用 TUI 則開啟)
+        // Web Dashboard 強制啟用，停用 Terminal TUI 模式
+        this.useTUI = process.env.DISABLE_TUI !== 'true' && process.env.FORCE_TUI === 'true';
+
+        if (this.useTUI) {
+            this.view = new TerminalView({
+                title: '🦞 Golem v9.0 戰術控制台 (MultiAgent Edition)',
+                onExit: () => this.detach()
+            });
+        } else {
+            console.log("📺 [Dashboard] Terminal TUI mode disabled. Using raw console mode.");
+        }
 
         // 啟動 Web Server (保留 v8.6 Web 介面功能)
         this._initWebServer();
@@ -42,7 +49,7 @@ class DashboardPlugin {
     }
 
     _initWebServer() {
-        if (process.env.ENABLE_WEB_DASHBOARD === 'true' && WebServer) {
+        if (WebServer) {
             try {
                 this.webServer = new WebServer(this);
             } catch (e) {
@@ -65,7 +72,9 @@ class DashboardPlugin {
         };
 
         const tag = tags[type] || { start: '', end: '' };
-        this.view.log(type, `${tag.start}${raw}${tag.end}`);
+        if (this.view) {
+            this.view.log(type, `${tag.start}${raw}${tag.end}`);
+        }
 
         // Web 廣播
         if (this.webServer) {
@@ -79,8 +88,19 @@ class DashboardPlugin {
 
     _handleError(args) {
         if (this.manager.state.isDetached) return;
-        const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ');
-        this.view.log('error', `{red-fg}[錯誤] ${msg}{/red-fg}`);
+        const util = require('util');
+        const msg = args.map(a => {
+            if (a instanceof Error) return `${a.name}: ${a.message}\n${a.stack}`;
+            if (typeof a === 'object' && a !== null) {
+                if (a.stack || a.message) return `${a.name || 'Error'}: ${a.message || ''}\n${a.stack || ''}`;
+                return util.inspect(a, { depth: 1, colors: false });
+            }
+            return String(a);
+        }).join(' ');
+
+        if (this.view) {
+            this.view.log('error', `{red-fg}[錯誤] ${msg}{/red-fg}`);
+        }
         if (this.webServer) {
             this.webServer.broadcastLog({ time: new Date().toLocaleTimeString(), msg, type: 'error' });
         }
@@ -92,7 +112,6 @@ class DashboardPlugin {
 
             const memUsage = process.memoryUsage().heapUsed / 1024 / 1024;
             const metricsData = this.manager.updateMetrics(memUsage);
-            this.view.updateMetrics(metricsData);
 
             const mode = process.env.GOLEM_MEMORY_MODE || 'Browser';
             const uptime = Math.floor(process.uptime());
@@ -100,7 +119,10 @@ class DashboardPlugin {
             const minutes = Math.floor((uptime % 3600) / 60);
             const uptimeStr = `${hours}h ${minutes}m`;
 
-            this.view.updateStatus(this.manager.getSystemStatus(mode, uptimeStr));
+            if (this.view) {
+                this.view.updateMetrics(metricsData);
+                this.view.updateStatus(this.manager.getSystemStatus(mode, uptimeStr));
+            }
 
             if (this.webServer) {
                 this.webServer.broadcastHeartbeat({ memUsage, uptime: uptimeStr, cpu: 0 });
@@ -111,7 +133,7 @@ class DashboardPlugin {
     detach() {
         this.manager.state.isDetached = true;
         ConsoleInterceptor.restore();
-        this.view.destroy();
+        if (this.view) this.view.destroy();
 
         if (this.webServer) {
             this.webServer.stop();
@@ -124,9 +146,9 @@ class DashboardPlugin {
         process.stdout.write("============================================\n\n");
     }
 
-    setContext(brain, memory) {
+    setContext(golemId, brain, memory, autonomy) {
         if (this.webServer) {
-            this.webServer.setContext(brain, memory);
+            this.webServer.setContext(golemId, brain, memory, autonomy);
         }
     }
 }

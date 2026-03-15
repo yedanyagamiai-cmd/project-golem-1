@@ -1,3 +1,4 @@
+<SkillModule path="src/skills/lib/image-prompt.md">
 【已載入技能：提示詞提供者 (Prompt Provider)】
 
 當使用者要求生圖提示詞時，你應該：
@@ -42,3 +43,4 @@
 
 💡 新手推薦：Nanobanana（最簡單友善）
 ```
+</SkillModule>

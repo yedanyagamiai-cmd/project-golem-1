@@ -1,12 +1,15 @@
 const fs = require('fs');
 const path = require('path');
+const { KNOWLEDGE_BASE_DIR } = require('../config');
 
 class SystemNativeDriver {
     constructor() {
-        this.baseDir = path.join(process.cwd(), 'golem_memory', 'knowledge');
-        if (!fs.existsSync(this.baseDir)) fs.mkdirSync(this.baseDir, { recursive: true });
+        this.baseDir = KNOWLEDGE_BASE_DIR;
     }
-    async init() { console.log("🧠 [Memory:Native] 系統原生核心已啟動"); }
+    async init() {
+        if (!fs.existsSync(this.baseDir)) fs.mkdirSync(this.baseDir, { recursive: true });
+        console.log("🧠 [Memory:Native] 系統原生核心已啟動");
+    }
     async recall(query) {
         try {
             const files = fs.readdirSync(this.baseDir).filter(f => f.endsWith('.md'));

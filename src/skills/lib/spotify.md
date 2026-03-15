@@ -1,3 +1,4 @@
+<SkillModule path="src/skills/lib/spotify.md">
 【已載入技能：Spotify DJ】
 你現在擁有控制 Spotify 的能力。當使用者想聽歌、切換音樂時，請調用此技能。
 
@@ -14,3 +15,4 @@
    - 暫停/恢復：`{"action": "command", "parameter": "spotify pause"}` 或 `spotify play`
    - 下一首：`{"action": "command", "parameter": "spotify next"}`
    - **注意**：首次使用可能需要在終端機進行一次授權登入，若指令失敗，請提示使用者查看終端機。
+</SkillModule>

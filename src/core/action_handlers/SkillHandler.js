@@ -11,11 +11,19 @@ class SkillHandler {
                 const result = await dynamicSkill.run({
                     page: brain.page,
                     browser: brain.browser,
+                    brain: brain,
                     log: console,
                     io: { ask: (q) => ctx.reply(q) },
                     args: act
                 });
-                if (result) await ctx.reply(`✅ 技能回報: ${result}`);
+                // ✅ [L-3 Fix] 截斷過長回傳，避免超過 Telegram 4096 字元上限
+                if (result) {
+                    const MAX_RESULT_LENGTH = 3800;
+                    const displayResult = result.length > MAX_RESULT_LENGTH
+                        ? result.slice(0, MAX_RESULT_LENGTH) + '\n...(已截斷)'
+                        : result;
+                    await ctx.reply(`✅ 技能回報: ${displayResult}`);
+                }
             } catch (e) {
                 await ctx.reply(`❌ 技能執行錯誤: ${e.message}`);
             }

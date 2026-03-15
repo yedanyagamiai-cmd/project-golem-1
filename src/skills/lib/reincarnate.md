@@ -1,3 +1,4 @@
+<SkillModule path="src/skills/lib/reincarnate.md">
 【已載入技能：記憶轉生 (Memory Reincarnation)】
 觸發時機：當對話上下文過長導致你邏輯混亂，或使用者要求「重開對話」、「/new」、「變笨了」時。
 
@@ -7,3 +8,4 @@
 3. 生成一個任務 (Task) 執行以下指令：
    `{"action": "reincarnate", "summary": "這裡放你總結的【記憶摘要】"}`
 4. 等待使用者點擊 APPROVE 批准執行。
+</SkillModule>

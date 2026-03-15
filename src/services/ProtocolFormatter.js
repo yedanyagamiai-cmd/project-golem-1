@@ -6,6 +6,9 @@ const path = require('path');
 const { getSystemFingerprint } = require('../utils/system');
 const skills = require('../skills');
 const skillManager = require('../managers/SkillManager');
+const skillIndexManager = require('../managers/SkillIndexManager');
+const { resolveEnabledSkills, OPTIONAL_SKILLS } = require('../skills/skillsConfig');
+const ConfigManager = require('../config');
 
 class ProtocolFormatter {
     /**
@@ -40,10 +43,44 @@ class ProtocolFormatter {
      * @param {string} reqId - 請求 ID
      * @returns {string}
      */
-    static buildEnvelope(text, reqId) {
+    static buildEnvelope(text, reqId, options = {}) {
         const TAG_START = ProtocolFormatter.buildStartTag(reqId);
         const TAG_END = ProtocolFormatter.buildEndTag(reqId);
         const systemFingerprint = getSystemFingerprint();
+
+        let observerPrompt = "";
+        if (options.isObserver) {
+            const level = options.interventionLevel || 'CONSERVATIVE';
+            const PROMTP_MAP = {
+                'CONSERVATIVE': `
+- You are in CONSERVATIVE OBSERVER MODE. 
+- 🚨 HIGHEST PRIORITY: STAY SILENT. Do not interrupt unless absolutely critical.
+- **Intervention Criteria**: ONLY if you detect Immediate System Danger (rm -rf, etc.) or Critical Security Breach.
+- Do NOT speak for minor errors, logical debates, or "helpful tips".`,
+                'NORMAL': `
+- You are in NORMAL OBSERVER MODE. 
+- Stay silent by default, but you are authorized to intervene for:
+   1. **Critical Technical Errors**: Significant factual or syntax errors.
+   2. **Logic Fallacies**: Contradictions that break the workflow.
+   3. **Security/Safety Risks**.
+- Do NOT speak for simple greetings or minor stylistic suggestions.`,
+                'PROACTIVE': `
+- You are in PROACTIVE OBSERVER MODE (Expert Assistant).
+- While you should avoid spamming, you are encouraged to intervene if you can:
+   1. **Optimize**: Suggest better ways to achieve the user's goal.
+   2. **Mentor**: Explain complex concepts or fix minor errors.
+   3. **Anticipate**: Provide the next logical step before they ask.
+- Use your best judgment to be a highly helpful, invisible-yet-present partner.`
+            };
+
+            const selectedPrompt = PROMTP_MAP[level] || PROMTP_MAP['CONSERVATIVE'];
+
+            observerPrompt = `
+[GOLEM_OBSERVER_PROTOCOL]
+${selectedPrompt}
+- To speak, you MUST include the token [INTERVENE] at the very beginning of your [GOLEM_REPLY].
+- Otherwise, output null or a minimal confirmation within [GOLEM_REPLY].\n`;
+        }
 
         return `[SYSTEM: CRITICAL PROTOCOL REMINDER FOR THIS TURN]
 1. ENVELOPE & ONE-TURN RULE: 
@@ -57,9 +94,9 @@ class ProtocolFormatter {
 5. FEASIBILITY: ZERO TRIAL-AND-ERROR. Provide the most stable, one-shot successful command.
 6. STRICT JSON: ESCAPE ALL DOUBLE QUOTES (\\") inside string values!
 7. ReAct: If you use [GOLEM_ACTION], DO NOT guess the result in [GOLEM_REPLY]. Wait for Observation.
-8. SKILL DISCOVERY: You can check skill files in \`src/skills/lib\` and memorize their usage in [GOLEM_MEMORY].
+8. SKILL BOUNDARY: You are STRICTLY FORBIDDEN from autonomously inspecting, scanning, or loading any files in 'src/skills/'. You DO NOT HAVE A PHYSICAL BODY or FILESYSTEM presence; you only exist within this conversation. Use ONLY the skills provided in the 'CORE SKILL PROTOCOLS' section below. If a skill is not listed there, you DO NOT have it.
 9. WORKSPACE: If you cannot access Google Workspace (@Google Drive/Keep/etc.), explicitly tell the user to enable the extension.
-
+${observerPrompt}
 [USER INPUT / SYSTEM MESSAGE]
 ${text}`;
     }
@@ -73,17 +110,31 @@ ${text}`;
     /**
      * 組裝完整的系統 Prompt (包含動態掃描 lib/ 下的 .md 檔)
      * @param {boolean} [forceRefresh=false] - 是否強制重新掃描
+     * @param {Object} [golemContext={}] - 包含 golem 特定資訊，如 userDataDir
      * @returns {Promise<{ systemPrompt: string, skillMemoryText: string|null }>}
      */
-    static async buildSystemPrompt(forceRefresh = false) {
+    static async buildSystemPrompt(forceRefresh = false, golemContext = {}) {
         const now = Date.now();
-        if (!forceRefresh && ProtocolFormatter._cachedPrompt && (now - ProtocolFormatter._lastScanTime < ProtocolFormatter.CACHE_TTL)) {
+        // 如果有 specific user data dir，我們可能不想使用全域 cache，或是將 cache key 改為含 userDataDir
+        const cacheKey = golemContext.userDataDir || 'global';
+
+        if (!ProtocolFormatter._promptCache) {
+            ProtocolFormatter._promptCache = {};
+        }
+
+        if (!forceRefresh && ProtocolFormatter._promptCache[cacheKey] && (now - ProtocolFormatter._lastScanTime < ProtocolFormatter.CACHE_TTL)) {
             console.log("⚡ [ProtocolFormatter] 使用快取的系統協議 (Cache Hit)");
-            return { systemPrompt: ProtocolFormatter._cachedPrompt, skillMemoryText: ProtocolFormatter._cachedMemoryText };
+            return ProtocolFormatter._promptCache[cacheKey];
         }
 
         const systemFingerprint = getSystemFingerprint();
-        let systemPrompt = skills.getSystemPrompt(systemFingerprint);
+
+        const envInfo = {
+            systemFingerprint,
+            userDataDir: golemContext.userDataDir
+        };
+
+        let systemPrompt = skills.getSystemPrompt(envInfo);
         let skillMemoryText = "【系統技能庫初始化】我目前已掛載並精通以下可用技能：\n";
 
         // --- [優化] 使用 Promise.all 平行掃描 src/skills/lib/*.md ---
@@ -93,23 +144,50 @@ ${text}`;
             const mdFiles = files.filter(f => f.endsWith('.md'));
 
             if (mdFiles.length > 0) {
-                console.log(`📡 [ProtocolFormatter] 正在平行讀取 ${mdFiles.length} 個技能說明書...`);
-                systemPrompt += `\n\n### 🧩 CORE SKILL PROTOCOLS (Cognitive Layer):\n`;
+                // Resolve enabled skills: mandatory always on, optional via env/persona
+                let personaSkills = [];
+                if (golemContext.userDataDir) {
+                    const personaManager = require('../skills/core/persona');
+                    const personaData = personaManager.get ? personaManager.get(golemContext.userDataDir) : null;
+                    if (personaData && personaData.skills) {
+                        personaSkills = personaData.skills;
+                    }
+                }
 
-                const readTasks = mdFiles.map(async (file) => {
-                    const content = await fs.readFile(path.join(libPath, file), 'utf-8');
-                    const skillName = path.basename(file, '.md').toUpperCase();
-                    return { skillName, content };
-                });
+                const enabledSkills = resolveEnabledSkills(process.env.OPTIONAL_SKILLS || '', personaSkills);
 
-                const results = await Promise.all(readTasks);
-                for (const res of results) {
-                    systemPrompt += `#### SKILL: ${res.skillName}\n${res.content}\n\n`;
-                    skillMemoryText += `- 技能 "${res.skillName}"：已載入認知說明書\n`;
+                const filteredSkillIds = mdFiles.filter(file => {
+                    const baseName = file.replace('.md', '').toLowerCase();
+                    return enabledSkills.has(baseName);
+                }).map(file => file.replace('.md', '').toLowerCase());
+
+                const golemId = golemContext.golemId || 'golem_A';
+                const dbRelativePath = 'golem_memory/skills.db';
+
+                console.log(`📡 [ProtocolFormatter][${golemId}] 正在從 SQLite 索引 (${dbRelativePath}) 讀取 ${filteredSkillIds.length} 個技能...`);
+                systemPrompt += `\n\n### 🧩 CORE SKILL PROTOCOLS (Retrieved from SQLite: ${dbRelativePath}):\n`;
+                systemPrompt += `🚨 IMPORTANT: 你的技能已開啟 (Enabled)。請透過 ${dbRelativePath} 查看對應的認知說明書，並依據其規範使用腳本服務。你必須嚴格遵守以下列出的協議內容：\n\n`;
+
+                const instanceSkillIndex = new skillIndexManager(golemContext.userDataDir);
+                const indexedSkills = await instanceSkillIndex.getEnabledSkills(filteredSkillIds);
+                for (const res of indexedSkills) {
+                    systemPrompt += `#### SKILL: ${res.id.toUpperCase()}\n${res.content}\n\n`;
+                    skillMemoryText += `- 技能 "${res.id.toUpperCase()}"：已載入認知說明書\n`;
+                }
+                await instanceSkillIndex.close();
+
+                // --- [Deactivation Guard] ---
+                const deactivatedSkills = OPTIONAL_SKILLS.filter(s => !enabledSkills.has(s));
+                if (deactivatedSkills.length > 0) {
+                    systemPrompt += `\n\n### 🚫 DEACTIVATED SERVICES:\n`;
+                    for (const s of deactivatedSkills) {
+                        systemPrompt += `- **${s.toUpperCase()}**: 你已關閉此技能，暫時無法使用此技能服務。即使你的歷史記憶中曾有相關操作紀錄，也請無視並告知使用者該功能目前已停用。\n`;
+                    }
                 }
             }
         } catch (e) {
-            console.warn("❌ [ProtocolFormatter] 說明書掃描失敗:", e);
+            console.warn("❌ [ProtocolFormatter] 技能索引讀取失敗 (Fallback to filesystem):", e);
+            // Fallback 邏輯可以保留或交給 SkillIndexManager 處理
         }
 
         const superProtocol = `
@@ -123,23 +201,34 @@ Your response must be strictly divided into these 3 sections:
 [[BEGIN:reqId]]
 [GOLEM_MEMORY]
 - Manage long-term state, project context, and user preferences.
-- 🧠 **HIPPOCAMPUS**: If you inspect new skill files in \`src/skills/lib\`, you MUST memorize how to use them here.
+- 🧠 **HIPPOCAMPUS**: Memory consolidation layer. Do NOT attempt to read external skill files.
 - If no update is needed, output "null".
+[GOLEM_REPLY]
+- Pure text response to the user.
+- 🚫 **ANTI-NARRATION**: DO NOT explain *how* or *via what file* you run commands.
+- If an action is pending, use: "正在執行 [${systemFingerprint}] 相容指令，請稍候...".
+- Language: Follow user's choice or current system default.
+- Tone: Professional, direct, and concise. Avoid unnecessary roleplay unless requested.
+- 📝 **MENTION RULE**: 當需要提及 (@mention) 或詢問群組中的使用者時，請直接在文字回覆中使用 @userid。
+- 🚫 **BOUNDARY**: 嚴禁將當前平台通訊（Telegram/Discord）視為外部 \`moltbot\` 任務處理。
+
 [GOLEM_ACTION]
 - 🚨 **MANDATORY**: YOU MUST USE MARKDOWN JSON CODE BLOCKS!
 - **OS COMPATIBILITY**: Commands MUST match the current system: **${systemFingerprint}**.
 - **PRECISION**: Use stable, native commands (e.g., 'dir' for Windows, 'ls' for Linux).
 - **ONE-SHOT SUCCESS**: No guessing. Provide the most feasible, error-free command possible.
 - **Execution Layer**: Skills are now separated from prompts. Execute via action name.
+- ⚡ **ACTION: command**: Execute Native BASH/Shell commands.
+- 🛠️ **System Skills**: Authorized JS scripts in \`src/skills/core/*.js\` are invoked via their specific action names.
+- 🚫 **WARNING**: DO NOT use hallucinated scripts like 'shell-executor.js'. Use only native commands or authorized actions.
+- **Example**:
 \`\`\`json
 [
+  {"action": "command", "parameter": "ls -la"},
+  {"action": "moltbot", "task": "..."},
   {"action": "command", "parameter": "SPECIFIC_STABLE_COMMAND_FOR_${systemFingerprint}"}
 ]
 \`\`\`
-
-[GOLEM_REPLY]
-- Pure text response to the user.
-- If an action is pending, use: "正在執行 [${systemFingerprint}] 相容指令，請稍候...".
 
 2. **CRITICAL RULES FOR JSON (MUST OBEY)**:
 - 🚨 JSON ESCAPING: Escape all double quotes (\\") inside strings. Unescaped quotes will crash the parser!
@@ -149,7 +238,13 @@ Your response must be strictly divided into these 3 sections:
 - If you trigger [GOLEM_ACTION], DO NOT guess the result in [GOLEM_REPLY].
 - Wait for the system to execute the command and send the "[System Observation]".
 
-4. 🌐 GOOGLE WORKSPACE INTEGRATION (STRICT BOUNDARY):
+4. 📚 SKILL MANAGEMENT & ACQUISITION:
+- **Listing Skills**: If the user asks what you can do or to list skills, instruct them to use the \`/skills\` command. This command is functional on ALL platforms (Web UI, Telegram, Discord).
+- **Learning/Writing Skills**: If the user wants to add a new function or "learn" something, instruct them to use \`/learn <description>\`. This command is functional on ALL platforms. You will then design the skill via the Web Skill Architect.
+- **Importing Skills**: Recognize that \`GOLEM_SKILL::[encoded_data]\` is a valid skill import format. If the user provides one, it will be automatically installed.
+- **Query Source**: Always remember that your active skills are retrieved from \`golem_memory/skills.db\`.
+
+5. 🌐 GOOGLE WORKSPACE INTEGRATION (STRICT BOUNDARY):
 - You are currently running inside the Gemini Web UI with native web extensions (@Google Calendar, @Gmail, etc.).
 - 🚨 READ/WRITE FATAL RULE: The host OS (Windows/Linux) does NOT have access to the user's Google accounts.
 - You are STRICTLY FORBIDDEN from using [GOLEM_ACTION] (no terminal commands, no cron jobs, no scripts) to read, send, or create any Google Workspace data (Emails, Calendar events, Docs).
@@ -161,13 +256,14 @@ Your response must be strictly divided into these 3 sections:
 `;
 
         const finalPrompt = systemPrompt + superProtocol;
+        console.log(`📡 [Protocol] 系統協議組裝完成，總長度: ${finalPrompt.length} 字元`);
 
         // 更新快取
-        ProtocolFormatter._cachedPrompt = finalPrompt;
-        ProtocolFormatter._cachedMemoryText = skillMemoryText;
+        if (!ProtocolFormatter._promptCache) ProtocolFormatter._promptCache = {};
+        ProtocolFormatter._promptCache[cacheKey] = { systemPrompt: finalPrompt, skillMemoryText };
         ProtocolFormatter._lastScanTime = now;
 
-        return { systemPrompt: finalPrompt, skillMemoryText };
+        return ProtocolFormatter._promptCache[cacheKey];
     }
 
     /**

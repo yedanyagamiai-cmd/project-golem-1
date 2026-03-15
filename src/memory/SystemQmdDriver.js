@@ -2,15 +2,15 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { exec, execSync } = require('child_process');
-const { CONFIG } = require('../config');
+const { CONFIG, KNOWLEDGE_BASE_DIR } = require('../config');
 
 class SystemQmdDriver {
     constructor() {
-        this.baseDir = path.join(process.cwd(), 'golem_memory', 'knowledge');
-        if (!fs.existsSync(this.baseDir)) fs.mkdirSync(this.baseDir, { recursive: true });
+        this.baseDir = KNOWLEDGE_BASE_DIR;
         this.qmdCmd = 'qmd';
     }
     async init() {
+        if (!fs.existsSync(this.baseDir)) fs.mkdirSync(this.baseDir, { recursive: true });
         console.log("🔍 [Memory:Qmd] 啟動引擎探測...");
         try {
             const checkCmd = (c) => {

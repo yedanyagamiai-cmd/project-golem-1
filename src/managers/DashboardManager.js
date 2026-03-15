@@ -20,7 +20,15 @@ class DashboardManager {
      * 解析日誌內容並決定分流類型
      */
     dispatchLog(args) {
-        const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ');
+        const util = require('util');
+        const msg = args.map(a => {
+            if (a instanceof Error) return `${a.name}: ${a.message}\n${a.stack}`;
+            if (typeof a === 'object' && a !== null) {
+                if (a.stack || a.message) return `${a.name || 'Error'}: ${a.message || ''}\n${a.stack || ''}`;
+                return util.inspect(a, { depth: 1, colors: false });
+            }
+            return String(a);
+        }).join(' ');
         const cleanMsg = msg.replace(/\u001b\[.*?m/g, '').replace(/\{.*?\}/g, '');
 
         // 分流邏輯 - 根據日誌關鍵字決定顯示區域
@@ -39,6 +47,8 @@ class DashboardManager {
             type = 'queue';
             if (cleanMsg.includes('加入隊列')) this.state.queueCount++;
             if (cleanMsg.includes('開始處理')) this.state.queueCount = Math.max(0, this.state.queueCount - 1);
+        } else if (cleanMsg.includes('[Memory]') || cleanMsg.includes('[Memory:Browser]')) {
+            type = 'memory';
         }
 
         return { type, msg, cleanMsg, raw: msg };

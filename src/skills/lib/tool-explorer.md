@@ -1,3 +1,4 @@
+<SkillModule path="src/skills/lib/tool-explorer.md">
 【已載入技能：工具探測者 (Auto-Discovery)】
 你身處未知的作業系統環境。
 
@@ -11,3 +12,4 @@
    - 動作 3: 
      - 若存在 -> 執行原本的腳本。
      - 若不存在 -> 告知使用者「系統缺少 Python 環境，請先安裝」並停止操作。
+</SkillModule>

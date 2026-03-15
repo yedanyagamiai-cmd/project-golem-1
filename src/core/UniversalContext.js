@@ -12,6 +12,26 @@ class UniversalContext {
         this.isInteraction = platform === 'discord' && (event.isButton?.() || event.isCommand?.());
     }
 
+    /**
+     * 偵測訊息中是否包含對機器人的標記
+     * @param {string} text 待檢查的文字
+     * @returns {boolean}
+     */
+    isMentioned(text) {
+        if (!text) return false;
+        if (this.platform === 'telegram') {
+            const username = this.instance.username;
+            if (!username) return false;
+            return text.toLowerCase().includes(`@${username.toLowerCase()}`);
+        }
+        if (this.platform === 'discord') {
+            const botId = this.instance.user?.id;
+            if (!botId) return false;
+            return text.includes(`<@${botId}>`) || text.includes(`<@!${botId}>`);
+        }
+        return false;
+    }
+
     get userId() {
         return this.platform === 'telegram' ? String(this.event.from?.id || this.event.user?.id) : this.event.user ? this.event.user.id : this.event.author?.id;
     }
@@ -40,10 +60,17 @@ class UniversalContext {
         return !this.event.guildId;
     }
 
+    get authMode() {
+        if (this.platform === 'telegram' && this.instance.golemConfig && this.instance.golemConfig.tgAuthMode) {
+            return String(this.instance.golemConfig.tgAuthMode).toUpperCase();
+        }
+        return CONFIG.TG_AUTH_MODE;
+    }
+
     get shouldMentionSender() {
         if (this.platform === 'telegram') {
             // 在 ADMIN 模式或私聊中，不需要 @ 使用者
-            if (CONFIG.TG_AUTH_MODE === 'ADMIN' || this.isPrivate) return false;
+            if (this.authMode === 'ADMIN' || this.isPrivate) return false;
             return true;
         }
         return !this.isPrivate;
@@ -112,17 +139,34 @@ class UniversalContext {
         return null;
     }
 
+    get targetChatId() {
+        if (this.platform === 'telegram' && this.instance.golemConfig && this.instance.golemConfig.chatId) {
+            return String(this.instance.golemConfig.chatId);
+        }
+        return CONFIG.TG_CHAT_ID;
+    }
+
+    get adminIds() {
+        if (this.platform === 'telegram' && this.instance.golemConfig && this.instance.golemConfig.adminId) {
+            const adminCfg = this.instance.golemConfig.adminId;
+            const ids = Array.isArray(adminCfg) ? adminCfg : String(adminCfg).split(',');
+            return ids.map(id => String(id).trim()).filter(Boolean);
+        }
+        return CONFIG.ADMIN_IDS;
+    }
+
     get isAdmin() {
         if (this.platform === 'telegram') {
-            if (CONFIG.TG_AUTH_MODE === 'CHAT') {
-                return String(this.chatId) === String(CONFIG.TG_CHAT_ID);
+            if (this.authMode === 'CHAT') {
+                return String(this.chatId) === String(this.targetChatId);
             }
             // Default ADMIN mode: 必須是 Admin 本人，且必須是在私聊 (Private) 中
             // 避免 Bot 在 Admin 參與的群組中誤觸發
             if (!this.isPrivate) return false;
 
-            if (CONFIG.ADMIN_IDS.length === 0) return true;
-            return CONFIG.ADMIN_IDS.includes(String(this.userId));
+            const ids = this.adminIds;
+            if (ids.length === 0) return true;
+            return ids.includes(String(this.userId));
         }
 
         // Other platforms (Discord)
@@ -168,6 +212,18 @@ class UniversalContext {
             // 僅在需要 Mention 的環境 (群組) 下執行，私聊不使用 reply氣泡 以保持簡潔
             if (this.shouldMentionSender && !sendOptions.reply_to_message_id) {
                 sendOptions.reply_to_message_id = this.messageId;
+            }
+
+            // [V9.0.7 降級策略] 針對觀察者模式，若回覆 ID 過期或無效，則降級為普通發言
+            try {
+                return await MessageManager.send(this, content, sendOptions);
+            } catch (e) {
+                if (e.message.includes('reply_to_message_id_invalid') || e.message.includes('message to reply not found')) {
+                    console.warn(`⚠️ [UniversalContext] 回覆 ID ${this.messageId} 失效，切換至一般發言回饋。`);
+                    delete sendOptions.reply_to_message_id;
+                    return await MessageManager.send(this, content, sendOptions);
+                }
+                throw e;
             }
         }
 

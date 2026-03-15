@@ -1,5 +1,4 @@
 const ResponseParser = require('../utils/ResponseParser');
-const ScheduleHandler = require('./action_handlers/ScheduleHandler');
 const MultiAgentHandler = require('./action_handlers/MultiAgentHandler');
 const SkillHandler = require('./action_handlers/SkillHandler');
 const CommandHandler = require('./action_handlers/CommandHandler');
@@ -8,8 +7,19 @@ const CommandHandler = require('./action_handlers/CommandHandler');
 // 🧬 NeuroShunter (神經分流中樞 - 核心路由器)
 // ============================================================
 class NeuroShunter {
-    static async dispatch(ctx, rawResponse, brain, controller) {
+    static async dispatch(ctx, rawResponse, brain, controller, options = {}) {
         const parsed = ResponseParser.parse(rawResponse);
+        let shouldSuppressReply = options.suppressReply === true;
+
+        // 核心：偵測 [INTERVENE] 標籤以實現觀察者模式自主介入
+        if (rawResponse.includes('[INTERVENE]')) {
+            console.log(`🚀 [NeuroShunter] 偵測到 AI 自主介入請求 [INTERVENE]！`);
+            shouldSuppressReply = false;
+        }
+
+        if (parsed.reply && parsed.reply.includes('[INTERVENE]')) {
+            parsed.reply = parsed.reply.replace(/\[INTERVENE\]/g, '').trim();
+        }
 
         // 1. 處理長期記憶寫入
         if (parsed.memory) {
@@ -17,26 +27,37 @@ class NeuroShunter {
             await brain.memorize(parsed.memory, { type: 'fact', timestamp: Date.now() });
         }
 
-        // 2. 處理直接回覆
-        if (parsed.reply) {
+        // 1. 處理直接回覆 (讓 AI 的解說文字在行動之前出現)
+        if (parsed.reply && !shouldSuppressReply) {
             let finalReply = parsed.reply;
             if (ctx.platform === 'telegram' && ctx.shouldMentionSender) {
                 finalReply = `${ctx.senderMention} ${parsed.reply}`;
             }
-            console.log(`🤖 [Golem] 說: ${finalReply}`);
+            console.log(`[TERMINAL] 🤖 [Golem] 說: ${finalReply}`);
+
+            // ✨ [Log] 記錄 AI 回應
+            if (brain && typeof brain._appendChatLog === 'function') {
+                brain._appendChatLog({
+                    sender: 'Golem',
+                    content: finalReply,
+                    type: 'ai',
+                    role: 'Assistant',
+                    isSystem: false
+                });
+            }
+
             await ctx.reply(finalReply);
+        } else if (parsed.reply && shouldSuppressReply) {
+            console.log(`🤫 [NeuroShunter] 檢測到靜默模式，已攔截回覆內容。`);
         }
 
-        // 3. 處理結構化 Action 分配 (Strategy Pattern)
-        if (parsed.actions.length > 0) {
+        // 2. 處理結構化 Action 分配 (讓批准視窗在回覆之後彈出)
+        if (parsed.actions.length > 0 && !shouldSuppressReply) {
             console.log(`[GOLEM_ACTION]\n${JSON.stringify(parsed.actions, null, 2)}`);
             const normalActions = [];
 
             for (const act of parsed.actions) {
                 switch (act.action) {
-                    case 'schedule':
-                        await ScheduleHandler.execute(ctx, act, brain);
-                        break;
                     case 'multi_agent':
                         await MultiAgentHandler.execute(ctx, act, controller, brain);
                         break;
@@ -51,10 +72,12 @@ class NeuroShunter {
                 }
             }
 
-            // 4. 處理剩餘的終端指令序列並自動啟動回饋循環 (Feedback Loop)
+            // 處理剩餘的終端指令序列並自動啟動回饋循環 (Feedback Loop)
             if (normalActions.length > 0) {
-                await CommandHandler.execute(ctx, normalActions, controller, brain, this.dispatch.bind(this));
+                await CommandHandler.execute(ctx, normalActions, controller, brain, (c, r, b, ctrl) => this.dispatch(c, r, b, ctrl, options));
             }
+        } else if (parsed.actions.length > 0 && shouldSuppressReply) {
+            console.log(`🤫 [NeuroShunter] 靜默模式，跳過 ${parsed.actions.length} 個 Action 的執行。`);
         }
     }
 }

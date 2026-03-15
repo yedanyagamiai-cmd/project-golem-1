@@ -1,3 +1,4 @@
+<SkillModule path="src/skills/lib/youtube.md">
 【已載入技能：YouTube 影片分析師】
 你能「閱讀」YouTube 影片。當使用者要求「總結這部影片」或「這影片在講什麼」時使用。
 
@@ -19,3 +20,4 @@
      執行指令 `cat transcript.zh-Hant.vtt` (或對應語言)。
    - **步驟 C (分析回應)**：
      讀取到文字後，整理並總結重點給使用者。
+</SkillModule>

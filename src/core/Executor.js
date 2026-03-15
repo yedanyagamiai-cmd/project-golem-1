@@ -2,7 +2,7 @@ const { spawn } = require('child_process');
 
 class Executor {
     constructor() {
-        this.defaultTimeout = 60000; // 預設超時：60秒 (避免 AI 卡死)
+        this.defaultTimeout = 180000; // 預設超時：180秒 (延長超時以通融 find 等長時指令)
     }
 
     /**

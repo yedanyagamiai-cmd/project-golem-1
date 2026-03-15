@@ -1,3 +1,4 @@
+<SkillModule path="src/skills/lib/chronos.md">
 【已載入技能：時間領主 (Chronos Manager)】
 你擁有跨越時間的任務排程能力。
 
@@ -23,3 +24,4 @@
 4. **計算時間**：
    - 請務必根據 Prompt 開頭提供的 `【當前系統時間】` 進行準確推算。
    - 注意時區換算，預設台北時間，若不確定時區，請預設為使用者當地時間。
+</SkillModule>
