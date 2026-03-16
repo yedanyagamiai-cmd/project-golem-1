@@ -12,11 +12,11 @@
   </p>
 
   <p>
-    <a href="#✨-what-is-this">What is this?</a> •
-    <a href="#🌟-core-capabilities">Capabilities</a> •
-    <a href="#📸-use-cases--interface-showcase">Showcase</a> •
-    <a href="#⚡-quick-start">Quick Start</a> •
-    <a href="#🏗️-system-architecture">Architecture</a>
+    <a href="#-what-is-this">What is this?</a> •
+    <a href="#-core-capabilities">Capabilities</a> •
+    <a href="#-use-cases--interface-showcase">Showcase</a> •
+    <a href="#-quick-start">Quick Start</a> •
+    <a href="#-system-architecture">Architecture</a>
   </p>
 
   [繁體中文](README.md) | **English**
@@ -30,7 +30,7 @@
 - [📸 Use Cases & Interface Showcase](#-use-cases--interface-showcase)
 - [⚡ Quick Start](#-quick-start)
 - [🎮 Command Reference](#-command-reference)
-- [🏗️ System Architecture](#️-system-architecture)
+- [🏗️ System Architecture](#-system-architecture)
 - [🧠 Pyramidal Long-term Memory](#-pyramidal-long-term-memory)
 - [📖 Complete Documentation & Guides](#-complete-documentation--guides)
 
