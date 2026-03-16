@@ -7,6 +7,7 @@ const DOMDoctor = require('../services/DOMDoctor');
 const BrowserMemoryDriver = require('../memory/BrowserMemoryDriver');
 const SystemQmdDriver = require('../memory/SystemQmdDriver');
 const SystemNativeDriver = require('../memory/SystemNativeDriver');
+const LanceDBMemoryDriver = require('../memory/LanceDBMemoryDriver');
 
 const BrowserLauncher = require('./BrowserLauncher');
 const ProtocolFormatter = require('../services/ProtocolFormatter');
@@ -40,6 +41,7 @@ class GolemBrain {
         const mode = ConfigManager.cleanEnv(process.env.GOLEM_MEMORY_MODE || 'browser').toLowerCase();
         console.log(`⚙️ [System] 記憶引擎模式: ${mode.toUpperCase()} (Golem: ${this.golemId})`);
         if (mode === 'qmd') this.memoryDriver = new SystemQmdDriver();
+        else if (mode === 'lancedb') this.memoryDriver = new LanceDBMemoryDriver();
         else if (mode === 'native' || mode === 'system') this.memoryDriver = new SystemNativeDriver();
         else this.memoryDriver = new BrowserMemoryDriver(this);
 
