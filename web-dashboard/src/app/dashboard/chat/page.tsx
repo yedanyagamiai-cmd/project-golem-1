@@ -20,6 +20,24 @@ interface ChatMessage {
     isThinking?: boolean;
 }
 
+interface CommandSuggestion {
+    command: string;
+    description: string;
+    subOptions?: string[];
+}
+
+const COMMANDS: CommandSuggestion[] = [
+    { command: "/model", description: "切換 AI 核心模型 (fast, think, pro)", subOptions: ["fast", "thinking", "pro"] },
+    { command: "/learn", description: "命令 Golem 學習編寫新技能" },
+    { command: "/skills", description: "列出目前已掛載的所有技能模組" },
+    { command: "/help", description: "顯示系統操作與指令說明手冊" },
+    { command: "/new", description: "物理重置對話視窗 (斷開舊記憶)" },
+    { command: "/new_memory", description: "清空底層資料庫記憶並執行深度重啟" },
+    { command: "/sos", description: "刪除受損的選擇器快取並重新探測" },
+    { command: "/callme", description: "更改 Golem 對您的稱呼語" },
+    { command: "/donate", description: "贊助支持 Golem 開發者" },
+];
+
 export default function DirectChatPage() {
     const { activeGolem, isSingleNode } = useGolem();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -27,6 +45,11 @@ export default function DirectChatPage() {
     const [input, setInput] = useState("");
     const [isSending, setIsSending] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
+
+    // ── [v9.1.11] Autocomplete States ──
+    const [suggestions, setSuggestions] = useState<any[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const [selectedIndex, setSelectedIndex] = useState(0);
 
     useEffect(() => {
         // We can optionally fetch logs history here later if needed
@@ -166,6 +189,45 @@ export default function DirectChatPage() {
         }
     };
 
+    // ── [v9.1.11] Autocomplete Logic ──
+    useEffect(() => {
+        if (input.startsWith("/")) {
+            const parts = input.split(/\s+/);
+            const cmdPart = parts[0].toLowerCase();
+            
+            if (parts.length === 1) {
+                // Main command suggestions
+                const filtered = COMMANDS.filter(c => c.command.startsWith(cmdPart));
+                setSuggestions(filtered);
+                setShowSuggestions(filtered.length > 0);
+                setSelectedIndex(0);
+            } else if (parts.length === 2 && cmdPart === "/model") {
+                // Sub-options for /model
+                const subPart = parts[1].toLowerCase();
+                const modelEntry = COMMANDS.find(c => c.command === "/model");
+                if (modelEntry?.subOptions) {
+                    const filteredSub = modelEntry.subOptions
+                        .filter(opt => opt.startsWith(subPart))
+                        .map(opt => ({ command: `/model ${opt}`, description: `切換至 ${opt} 模式` }));
+                    setSuggestions(filteredSub);
+                    setShowSuggestions(filteredSub.length > 0);
+                    setSelectedIndex(0);
+                } else {
+                    setShowSuggestions(false);
+                }
+            } else {
+                setShowSuggestions(false);
+            }
+        } else {
+            setShowSuggestions(false);
+        }
+    }, [input]);
+
+    const applySuggestion = (suggestion: any) => {
+        setInput(suggestion.command + " ");
+        setShowSuggestions(false);
+    };
+
     const handleSend = async () => {
         if (!input.trim() || !activeGolem) return;
 
@@ -294,9 +356,24 @@ export default function DirectChatPage() {
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    handleSend();
+                                if (showSuggestions) {
+                                    if (e.key === 'ArrowDown') {
+                                        e.preventDefault();
+                                        setSelectedIndex(prev => (prev + 1) % suggestions.length);
+                                    } else if (e.key === 'ArrowUp') {
+                                        e.preventDefault();
+                                        setSelectedIndex(prev => (prev - 1 + suggestions.length) % suggestions.length);
+                                    } else if (e.key === 'Enter' || e.key === 'Tab') {
+                                        e.preventDefault();
+                                        applySuggestion(suggestions[selectedIndex]);
+                                    } else if (e.key === 'Escape') {
+                                        setShowSuggestions(false);
+                                    }
+                                } else {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleSend();
+                                    }
                                 }
                             }}
                             disabled={!activeGolem || isSending}
@@ -315,6 +392,33 @@ export default function DirectChatPage() {
                         >
                             <Send size={18} />
                         </button>
+
+                        {/* ── [v9.1.11] Autocomplete Menu ── */}
+                        {showSuggestions && (
+                            <div className="absolute bottom-full left-0 mb-2 w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden z-50">
+                                <div className="p-2 space-y-1">
+                                    {suggestions.map((suggestion, idx) => (
+                                        <div
+                                            key={suggestion.command}
+                                            onClick={() => applySuggestion(suggestion)}
+                                            onMouseEnter={() => setSelectedIndex(idx)}
+                                            className={cn(
+                                                "px-3 py-2 rounded-lg cursor-pointer flex flex-col transition-colors",
+                                                idx === selectedIndex ? "bg-primary/20 border border-primary/30" : "hover:bg-zinc-800"
+                                            )}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm font-mono text-cyan-400">{suggestion.command}</span>
+                                                {idx === selectedIndex && (
+                                                    <span className="text-[10px] text-zinc-500 font-medium bg-zinc-800 px-1.5 py-0.5 rounded">Enter ↩</span>
+                                                )}
+                                            </div>
+                                            <span className="text-[11px] text-zinc-500 mt-0.5">{suggestion.description}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

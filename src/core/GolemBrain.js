@@ -53,6 +53,10 @@ class GolemBrain {
 
         // ── Backend Selection ──
         this.backend = ConfigManager.CONFIG.GOLEM_BACKEND || 'gemini';
+
+        // ── [v9.1] 登入狀態 ──
+        this.loginPromptDone = false;
+        this.forceHeadful = false;
     }
 
     // ─── Public API (向後相容) ─────────────────────────────
@@ -60,8 +64,9 @@ class GolemBrain {
     /**
      * 初始化瀏覽器、記憶引擎、注入系統 Prompt
      * @param {boolean} [forceReload=false] - 是否強制重新載入
+     * @param {boolean} [skipFullInit=false] - 是否跳過完整初始化 (記憶與 Prompt)
      */
-    async init(forceReload = false) {
+    async init(forceReload = false, skipFullInit = false) {
         console.log(`🎬 [Brain] 啟動初始化程序 (forceReload: ${forceReload})...`);
         if (this.context && !forceReload) {
             console.log("✅ [Brain] 瀏覽器實體已存在且無須強制重新載入，跳過啟動。");
@@ -74,9 +79,12 @@ class GolemBrain {
         if (!this.context) {
             console.log(`📂 [System] Browser User Data Dir: ${this.userDataDir} (Golem: ${this.golemId})`);
 
+            // 支援強制有頭模式
+            const isHeadless = this.forceHeadful ? false : (process.env.PUPPETEER_HEADLESS === 'true' || process.env.PUPPETEER_HEADLESS === 'new');
+
             this.context = await BrowserLauncher.launch({
                 userDataDir: this.userDataDir,
-                headless: process.env.PUPPETEER_HEADLESS,
+                headless: String(isHeadless),
             });
         }
 
@@ -114,6 +122,12 @@ class GolemBrain {
         } catch (e) {
             console.warn('⚠️ [Brain] 技能索引同步失敗:', e.message);
         }
+        
+        // 如果只要基礎啟動 (例如為了手動登入)，則在此處提早結束
+        if (skipFullInit) {
+            console.log("⏩ [Brain] SkipFullInit 啟用，跳過記憶引擎與系統 Prompt 注入。");
+            return;
+        }
 
         // 3. 初始化記憶引擎 (含降級策略)
         await this._initMemoryDriver();
@@ -142,7 +156,7 @@ class GolemBrain {
         }
     }
 
-    // ✨ [新增] 動態視覺腳本：針對新版 UI 切換模型 (支援中英文介面與防呆)
+    // ✨ [優化] 動態視覺腳本：針對新版 UI 切換模型 (支援中英文介面與防呆)
     async switchModel(targetMode) {
         if (!this.page) throw new Error("大腦尚未啟動。");
         try {
@@ -151,93 +165,88 @@ class GolemBrain {
 
                 // 定義支援的模式及其可能的中英文關鍵字
                 const modeKeywords = {
-                    'fast': ['fast', '快捷'],
-                    'thinking': ['thinking', '思考型', '思考'], // 增加容錯率
-                    'pro': ['pro'] // Pro 通常中英文都叫 Pro
+                    'fast': ['fast', '快捷', 'flash'],
+                    'thinking': ['thinking', '思考型', '思考'], 
+                    'pro': ['pro', 'advanced']
                 };
 
                 // 取得目標模式的所有關鍵字
                 const targetKeywords = modeKeywords[mode] || [mode];
 
-                // 1. 尋找畫面底部含有目標關鍵字的按鈕 (這可能是展開選單的按鈕)
-                const allKnownKeywords = [...modeKeywords.fast, ...modeKeywords.thinking, ...modeKeywords.pro];
-                const buttons = Array.from(document.querySelectorAll('div[role="button"], button'));
-                let pickerBtn = null;
+                // 1. 尋找畫面底部的模型切換按鈕 (通常位於輸入框區域)
+                const allKnownKeywords = [...modeKeywords.fast, ...modeKeywords.thinking, ...modeKeywords.pro, 'Gemini'];
+                
+                // 優先使用精確選擇器
+                let pickerBtn = document.querySelector('button.input-area-switch') || 
+                               document.querySelector('button[aria-label="開啟模式挑選器"]') ||
+                               document.querySelector('button[aria-label*="mode picker"]') ||
+                               document.querySelector('button[mat-mdc-menu-trigger]');
 
-                for (const btn of buttons) {
-                    const txt = (btn.innerText || "").toLowerCase().trim();
-                    if (allKnownKeywords.some(k => txt.includes(k.toLowerCase())) && btn.offsetHeight > 10 && btn.offsetHeight < 60) {
-                        const rect = btn.getBoundingClientRect();
-                        // 根據截圖，該按鈕位於畫面下半部
-                        if (rect.top > window.innerHeight / 2) {
-                            pickerBtn = btn;
-                            break;
+                if (!pickerBtn) {
+                    const buttons = Array.from(document.querySelectorAll('div[role="button"], button'));
+                    for (const btn of buttons) {
+                        const txt = (btn.innerText || btn.getAttribute('aria-label') || "").toLowerCase().trim();
+                        if (allKnownKeywords.some(k => txt.includes(k.toLowerCase())) && btn.offsetHeight > 10 && btn.offsetHeight < 100) {
+                            const rect = btn.getBoundingClientRect();
+                            if (rect.top > window.innerHeight / 2) {
+                                pickerBtn = btn;
+                                break;
+                            }
                         }
                     }
                 }
 
-                if (!pickerBtn) return "⚠️ 找不到畫面底部的模型切換按鈕。UI 可能已變更，或您停留在登入畫面。";
+                if (!pickerBtn) return "⚠️ 找不到模型切換按鈕。UI 可能已變更，或您停留在登入畫面。";
 
-                // ✨ [核心防呆] 檢查按鈕是否為「灰色不可點擊」狀態
+                // ✨ [核心防呆] 檢查按鈕是否為「不可點擊」狀態
                 const isDisabled = pickerBtn.disabled ||
                     pickerBtn.getAttribute('aria-disabled') === 'true' ||
-                    pickerBtn.classList.contains('disabled');
+                    pickerBtn.classList.contains('disabled') ||
+                    (pickerBtn.style.opacity && parseFloat(pickerBtn.style.opacity) < 0.6);
 
                 if (isDisabled) {
-                    return "⚠️ 模型切換按鈕目前呈現「灰色不可點擊」狀態！這通常是因為您尚未登入 Google 帳號，或該帳號目前沒有權限切換模型。";
+                    return "⚠️ 模型切換按鈕目前不可點擊！這通常是因為該帳號目前沒有權限切換模型。";
                 }
 
                 // 點擊展開選單
                 pickerBtn.click();
-                await delay(1000); // 等待選單彈出動畫
+                await delay(1200); 
 
-                // 2. 尋找選單中對應的目標模式 (比對中英文關鍵字)
-                const items = Array.from(document.querySelectorAll('*'));
+                // 2. 尋找選單中對應的目標模式
+                const items = Array.from(document.querySelectorAll('button.bard-mode-list-button, mat-list-item, [role="menuitem"], [role="option"]'));
                 let targetElement = null;
                 let bestMatch = null;
 
                 for (const el of items) {
-                    // 排除觸發按鈕本身，避免點到自己導致選單關閉
-                    if (pickerBtn === el || pickerBtn.contains(el)) continue;
+                    const txt = (el.innerText || el.getAttribute('aria-label') || "").trim().toLowerCase();
+                    if (txt.length === 0 || txt.length > 200) continue;
 
-                    // 排除不可見的元素
-                    const rect = el.getBoundingClientRect();
-                    if (rect.width === 0 || rect.height === 0) continue;
-
-                    const txt = (el.innerText || "").trim().toLowerCase();
-
-                    // 【防呆關鍵】如果文字太長，代表它是大容器 (例如整個網頁 background)，絕對不能點擊
-                    if (txt.length === 0 || txt.length > 50) continue;
-
-                    // 檢查是否包含目標關鍵字
                     if (targetKeywords.some(keyword => txt.includes(keyword.toLowerCase()))) {
-                        // 優先尋找帶有標準選單屬性的元素
-                        const role = el.getAttribute('role');
-                        if (role === 'menuitem' || role === 'menuitemradio' || role === 'option') {
-                            targetElement = el;
-                            break; // 找到最標準的選項，直接選定中斷
-                        }
-
-                        // 否則，尋找最深層的元素 (querySelectorAll 由外而內，最後的通常最深)
-                        bestMatch = el;
+                        targetElement = el;
+                        break; 
                     }
                 }
 
-                // 如果找不到標準 role，使用最深層的比對結果
                 if (!targetElement) {
+                    // 兜底：如果找不到精確選擇器，則遍歷所有元素
+                    const allElements = Array.from(document.querySelectorAll('button, div[role="button"]'));
+                    for (const el of allElements) {
+                        const txt = (el.innerText || "").toLowerCase().trim();
+                        if (txt.length > 0 && txt.length < 100 && targetKeywords.some(keyword => txt.includes(keyword.toLowerCase()))) {
+                            bestMatch = el;
+                        }
+                    }
                     targetElement = bestMatch;
                 }
 
                 if (!targetElement) {
-                    // 若真的找不到，點擊背景關閉選單避免畫面卡死
-                    document.body.click();
-                    return `⚠️ 選單已展開，但找不到對應「${mode}」的選項 (已搜尋關鍵字: ${targetKeywords.join(', ')})。您可能目前無法使用該模型。`;
+                    document.body.click(); // 關閉選單
+                    return `⚠️ 已展開選單，但找不到對應「${mode}」的選項。`;
                 }
 
-                // 點擊目標選項
                 targetElement.click();
                 await delay(800);
-                return `✅ 成功為您點擊並切換至 [${mode}] 模式！`;
+                return `✅ 成功切換至 [${mode}] 模式！`;
             }, targetMode.toLowerCase());
 
             return result;
@@ -255,6 +264,12 @@ class GolemBrain {
     async sendMessage(text, isSystem = false, options = {}) {
         await this._ensureBrowserHealth();
         if (!this.context) await this.init();
+
+        // ── [v9.1] 首次發送訊息前詢問是否登入 (僅限 TTY 或非生產環境) ──
+        if (!this.loginPromptDone && !isSystem && process.stdout.isTTY) {
+            await this._checkLoginRequirement();
+        }
+
         try { await this.page.bringToFront(); } catch (e) { }
         await this.setupCDP();
 
@@ -338,6 +353,74 @@ class GolemBrain {
             this.memoryDriver = new BrowserMemoryDriver(this);
             await this.memoryDriver.init();
         }
+    }
+
+    /**
+     * [v9.1] 詢問使用者是否需要手動登入
+     */
+    async _checkLoginRequirement() {
+        this.loginPromptDone = true;
+        
+        const readline = require('readline');
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
+
+        return new Promise((resolve) => {
+            console.log('\n=======================================');
+            console.log('🤖 [Golem] 準備發送訊息至 Web Gemini...');
+            rl.question('❓ 您是否需要登入 Google 帳號以使用 Web Gemini？ (y/N): ', async (answer) => {
+                if (answer.toLowerCase() === 'y') {
+                    console.log('🚀 [Golem] 啟動手動登入流程...');
+                    await this._manualLoginFlow(rl);
+                } else {
+                    console.log('⏩ [Golem] 略過登入，執行完整初始化程序...');
+                    // 在原本模式下執行記憶與 Prompt 初始化
+                    await this.init(true, false);
+                }
+                rl.close();
+                resolve();
+            });
+        });
+    }
+
+    /**
+     * [v9.1] 手動登入流程：有頭模式 -> 登入 -> 返回無頭並執行完整初始化
+     */
+    async _manualLoginFlow(rl) {
+        // 1. 關閉現有瀏覽器
+        if (this.context) {
+            console.log('🛑 [Golem] 正在關閉目前瀏覽器以切換至有頭模式...');
+            await this.context.close();
+            this.context = null;
+            this.page = null;
+            this.cdpSession = null;
+        }
+
+        // 2. 開啟有頭模式 (跳過初始化，只為了讓使用者登入)
+        this.forceHeadful = true;
+        await this.init(true, true);
+        console.log('\n=======================================');
+        console.log('🌐 [Golem] 已開啟瀏覽器視窗！');
+        console.log('🔑 請在視窗中完成 Google 登入手續。');
+        console.log('✅ 登入完成後，請回到此處按下 [Enter] 鍵繼續...');
+        console.log('=======================================\n');
+
+        await new Promise(resolve => rl.once('line', resolve));
+
+        // 3. 切換回原本模式，並執行「完整初始化」
+        console.log('🔄 [Golem] 登入完成，正在以登入後身份啟動完整初始化...');
+        this.forceHeadful = false;
+        if (this.context) {
+            await this.context.close();
+            this.context = null;
+            this.page = null;
+            this.cdpSession = null;
+        }
+        // 此處執行完整初始化 (skipFullInit = false)
+        await this.init(true, false);
+        console.log('✅ [Golem] 登入與初始化流程全部完成。');
     }
 
     /** 連結 Dashboard (若以 dashboard 模式啟動) */
