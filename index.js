@@ -190,6 +190,20 @@ function getOrCreateGolem() {
                     bot.getMe().then(me => {
                         bot.username = me.username;
                         console.log(`🤖 [Bot] ${golemConfig.id} 已掛載 (@${me.username})`);
+                        
+                        // ✨ [新增] 更新 Telegram 指令選單
+                        const tgCommands = [
+                            { command: 'sos', description: '輕量級急救：清除網頁快取' },
+                            { command: 'new', description: '物理重生：開啟全新對話' },
+                            { command: 'new_memory', description: '徹底轉生：清空 DB 並重置' },
+                            { command: 'model', description: '模型切換 (fast/thinking/pro)' },
+                            { command: 'enable_silent', description: '開啟完全靜默模式' },
+                            { command: 'disable_silent', description: '解除靜默模式' },
+                            { command: 'enable_observer', description: '同步對話但不發言' },
+                            { command: 'disable_observer', description: '解除觀察者模式' },
+                            { command: 'patch', description: '執行自我反思與代碼優化' }
+                        ];
+                        bot.setMyCommands(tgCommands).catch(e => console.error(`❌ [Bot] Set TG Commands Error:`, e.message));
                     }).catch(e => {
                         if (!e.message.includes('401')) {
                             console.warn(`⚠️ [Bot] ${golemConfig.id}:`, e.message);
