@@ -264,7 +264,7 @@ class SystemUpdater {
                 }
 
                 // Keep memory
-                if (keepMemory && (file === 'golem_memory' || file === '.env' || file === '.env.example' || file === 'personas')) {
+                if (keepMemory && (file === 'golem_memory' || file === 'profiles' || file === '.env' || file === '.env.example' || file === 'personas')) {
                     continue; // Skip moving/deleting these
                 }
 

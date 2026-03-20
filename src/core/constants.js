@@ -23,6 +23,7 @@ const LIMITS = Object.freeze({
 /** @enum {string} Gemini 相關 URL */
 const URLS = Object.freeze({
     GEMINI_APP: 'https://gemini.google.com/app',
+    GEMINI_FALLBACKS: ['https://gemini.google.com/app?hl=zh-TW'],
     PERPLEXITY_APP: 'https://www.perplexity.ai/',
 });
 
@@ -32,7 +33,28 @@ const BROWSER_ARGS = Object.freeze([
     '--disable-dev-shm-usage',
     '--disable-setuid-sandbox',
     '--window-size=50,50',
+    '--window-position=0,1000',
     '--disable-gpu',
+
+    // --- 記憶體與程序最佳化 ---
+    '--disable-site-isolation-trials',
+    '--disable-features=IsolateOrigins,site-per-process',
+    '--renderer-process-limit=1',
+
+    // --- 停用背景通訊與服務 ---
+    '--disable-background-networking',
+    '--disable-sync',
+    '--disable-translate',
+    '--disable-default-apps',
+    '--disable-extensions',
+    '--disable-component-update',
+
+    // --- 停用多餘 UI 與媒體 ---
+    '--mute-audio',
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-notifications',
+    '--disable-animations',
 ]);
 
 /** Chrome Lock 檔案名稱 */

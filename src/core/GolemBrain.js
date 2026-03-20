@@ -76,7 +76,7 @@ class GolemBrain {
 
             this.context = await BrowserLauncher.launch({
                 userDataDir: this.userDataDir,
-                headless: process.env.PUPPETEER_HEADLESS,
+                headless: process.env.PLAYWRIGHT_HEADLESS,
             });
         }
 
@@ -88,10 +88,9 @@ class GolemBrain {
             isNewSession = true;
         }
 
-        const targetUrl = this.backend === 'perplexity' ? URLS.PERPLEXITY_APP : URLS.GEMINI_APP;
-        console.log(`📡 [Brain] 導航至目標頁面: ${targetUrl}`);
-        await this.page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        console.log(`🚀 [System] ${this.backend === 'perplexity' ? 'Perplexity' : 'Gemini'} 頁面載入完成 (Golem: ${this.golemId})`);
+        const targetBackend = this.backend === 'perplexity' ? 'perplexity' : 'gemini';
+        await this._navigateToTarget(targetBackend);
+        console.log(`🚀 [System] ${targetBackend === 'perplexity' ? 'Perplexity' : 'Gemini'} 頁面載入完成 (Golem: ${this.golemId})`);
         // isNewSession is already set above if a new page was created.
 
         // 2.5 初始化日誌管理員 (建立目錄)
@@ -250,7 +249,7 @@ class GolemBrain {
      * 發送訊息到 Gemini 並等待結構化回應
      * @param {string} text - 訊息內容
      * @param {boolean} [isSystem=false] - 是否為系統訊息
-     * @returns {Promise<string>} 清理後的 AI 回應
+     * @returns {Promise<{text: string, attachments: any[]}>} 清理後的 AI 回應與附件
      */
     async sendMessage(text, isSystem = false, options = {}) {
         await this._ensureBrowserHealth();
@@ -258,13 +257,14 @@ class GolemBrain {
         try { await this.page.bringToFront(); } catch (e) { }
         await this.setupCDP();
 
+        const attachment = options.attachment || null;
+
         // ── [v9.1] Slash Command Interception ──
         if (text.startsWith('/') || text.startsWith('GOLEM_SKILL::')) {
             const commandResult = await NodeRouter.handle({ text, isAdmin: true }, this);
             if (commandResult) {
                 console.log(`⚡ [Brain] 指令攔截器已處理: ${text}`);
-                // 模擬 AI 回應格式返回 (若有需要可以包裝成更複雜的格式)
-                return commandResult;
+                return { text: commandResult, attachments: [] };
             }
         }
 
@@ -273,13 +273,14 @@ class GolemBrain {
         const endTag = ProtocolFormatter.buildEndTag(reqId);
         const payload = ProtocolFormatter.buildEnvelope(text, reqId, options);
 
-        console.log(`📡 [Brain] 發送訊號: ${reqId} (含每回合強制洗腦引擎)`);
+        console.log(`📡 [Brain] 發送訊號: ${reqId} (含每回合強制洗腦引擎)${attachment ? ' 📎 含有附件' : ''}`);
 
         const interactor = new PageInteractor(this.page, this.doctor);
 
+        let result;
         try {
-            return await interactor.interact(
-                payload, this.selectors, isSystem, startTag, endTag
+            result = await interactor.interact(
+                payload, this.selectors, isSystem, startTag, endTag, 0, attachment
             );
         } catch (e) {
             // 處理 selector 修復觸發的重試
@@ -287,12 +288,53 @@ class GolemBrain {
                 const [, type, newSelector] = e.message.split(':');
                 this.selectors[type] = newSelector;
                 this.doctor.saveSelectors(this.selectors);
-                return interactor.interact(
-                    payload, this.selectors, isSystem, startTag, endTag, 1
+                result = await interactor.interact(
+                    payload, this.selectors, isSystem, startTag, endTag, 1, attachment
                 );
+            } else {
+                throw e;
             }
-            throw e;
         }
+
+        // 📥 [v9.1.10] 處理 Gemini 回傳的附件，下載至本地伺服器
+        if (result.attachments && result.attachments.length > 0) {
+            const { downloadFile } = require('../utils/HttpUtils');
+            const path = require('path');
+            const { v4: uuidv4 } = require('uuid');
+            
+            const localAttachments = [];
+            for (const att of result.attachments) {
+                try {
+                    // 🚀 [v9.1.10] 強化副檔名推斷
+                    let ext = 'bin';
+                    const urlPath = att.url.split('?')[0].split('#')[0];
+                    const matchedExt = urlPath.match(/\.([a-zA-Z0-9]+)$/);
+                    if (matchedExt) ext = matchedExt[1];
+                    else if (att.mimeType === 'image/png') ext = 'png';
+                    else if (att.mimeType === 'application/pdf') ext = 'pdf';
+                    
+                    const fileName = `gemini_res_${Date.now()}_${uuidv4().substring(0, 8)}.${ext}`;
+                    const projectRoot = path.resolve(__dirname, '../../');
+                    const localPath = path.join(projectRoot, 'data', 'temp_uploads', fileName);
+                    
+                    await downloadFile(att.url, localPath);
+                    console.log(`✅ [Brain] Gemini 回應附件已下載 [${ext}]: ${fileName}`);
+                    
+                    localAttachments.push({
+                        url: `/api/files/${fileName}`,
+                        path: localPath,
+                        mimeType: att.mimeType || 'application/octet-stream',
+                        isNative: true,
+                        name: fileName
+                    });
+                } catch (err) {
+                    console.warn(`⚠️ [Brain] 附件下載失敗 (${att.url}): ${err.message}`);
+                }
+            }
+            result.attachments = localAttachments;
+        }
+
+        return result;
     }
 
     /**
@@ -393,8 +435,8 @@ class GolemBrain {
 
         // 5. 重新開啟對話視窗 (New Chat) 後再注入
         console.log(`🔄 [Brain][${this.golemId}] 正在開啟新的 ${this.backend === 'perplexity' ? 'Perplexity' : 'Gemini'} 對話視窗...`);
-        const targetUrl = this.backend === 'perplexity' ? URLS.PERPLEXITY_APP : URLS.GEMINI_APP;
-        await this.page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        const targetBackend = this.backend === 'perplexity' ? 'perplexity' : 'gemini';
+        await this._navigateToTarget(targetBackend);
 
         await this._injectSystemPrompt(true);
         console.log(`✅ [Brain][${this.golemId}] 完整重啟流程執行完畢 (Config + Skill + Protocol)。`);
@@ -499,6 +541,41 @@ class GolemBrain {
                 console.warn(`⚠️ [Brain] 歷史記憶掃描或注入失敗: ${e.message}`);
             }
         }
+    }
+
+    /**
+     * 🌐 導航至目標 AI 後端，支援多網址高可用 (Failover)
+     * @param {string} backend - 'gemini' | 'perplexity'
+     */
+    async _navigateToTarget(backend) {
+        if (!this.page) return;
+
+        let urls = [];
+        if (backend === 'perplexity') {
+            urls = [URLS.PERPLEXITY_APP];
+        } else {
+            // 優先從 ConfigManager 讀取使用者設定的 URLs，若無則使用 constants 中的預設值
+            urls = ConfigManager.CONFIG.GEMINI_URLS && ConfigManager.CONFIG.GEMINI_URLS.length > 0
+                ? ConfigManager.CONFIG.GEMINI_URLS
+                : [URLS.GEMINI_APP, ...URLS.GEMINI_FALLBACKS];
+        }
+
+        let lastError = null;
+        for (const url of urls) {
+            try {
+                console.log(`📡 [Brain] 正在嘗試導航至: ${url}`);
+                // 等待 domcontentloaded 以確保基本結構已載入
+                await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+                console.log(`✅ [Brain] 成功導航至: ${url}`);
+                return; // 成功則退出
+            } catch (e) {
+                console.warn(`⚠️ [Brain] 導航至 ${url} 失敗: ${e.message}`);
+                lastError = e;
+                // 繼續嘗試下一個 URL
+            }
+        }
+
+        throw new Error(`❌ [Brain] 無法連接至 ${backend.toUpperCase()}。所有嘗試過的網址皆失效。最後錯誤: ${lastError ? lastError.message : '未知'}`);
     }
 
     /**

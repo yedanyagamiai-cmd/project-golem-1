@@ -19,7 +19,7 @@
     <a href="#-快速開始">快速開始</a>
   </p>
 
-  **繁體中文** | [English](README.en.md) | [貢獻指南](CONTRIBUTING.zh-TW.md)
+  **繁體中文** | [English](docs/README.en.md) | [貢獻指南](docs/CONTRIBUTING.zh-TW.md)
 </div>
 
 ---
@@ -204,7 +204,7 @@ graph TD
 
 | 文件 | 說明 |
 |------|------|
-| [🤖 編碼代理指南](AGENTS.md) | **[重要]** 供 AI 助理或開發者參考的程式碼維護與架構規範 |
+| [🤖 編碼代理指南](docs/AGENTS.md) | **[重要]** 供 AI 助理或開發者參考的程式碼維護與架構規範 |
 | [🧠 記憶系統架構說明](docs/記憶系統架構說明.md) | 金字塔壓縮原理與存放路徑解析 |
 | [🖥️ Web Dashboard 使用說明](docs/Web-Dashboard-使用說明.md) | Web UI 各個分頁的延伸細節 |
 | [🛠️ 開發者實作指南](docs/開發者實作指南.md) | 如何實作新的 Skill 與 Golem Protocol 格式規範 |

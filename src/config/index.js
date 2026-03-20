@@ -24,7 +24,8 @@ const CONFIG = {
     TG_AUTH_MODE: cleanEnv(process.env.TG_AUTH_MODE) || 'ADMIN',
     TG_CHAT_ID: cleanEnv(process.env.TG_CHAT_ID),
     DC_TOKEN: cleanEnv(process.env.DISCORD_TOKEN),
-    USER_DATA_DIR: cleanEnv(process.env.USER_DATA_DIR || './golem_memory', true),
+    PLAYWRIGHT_PROFILE: cleanEnv(process.env.PLAYWRIGHT_PROFILE || ''),
+    USER_DATA_DIR: cleanEnv(process.env.USER_DATA_DIR || '', true),
     API_KEYS: (process.env.GEMINI_API_KEYS || '').split(',').map(k => cleanEnv(k)).filter(k => k),
     ADMIN_ID: cleanEnv(process.env.ADMIN_ID),
     DISCORD_ADMIN_ID: cleanEnv(process.env.DISCORD_ADMIN_ID),
@@ -48,7 +49,8 @@ const CONFIG = {
     ARCHIVE_THRESHOLD_TODAY: Number(cleanEnv(process.env.ARCHIVE_THRESHOLD_TODAY)) || 1,
     // --- Embedding Config ---
     EMBEDDING_PROVIDER: cleanEnv(process.env.GOLEM_EMBEDDING_PROVIDER) || 'local',
-    LOCAL_EMBEDDING_MODEL: cleanEnv(process.env.GOLEM_LOCAL_EMBEDDING_MODEL) || 'Xenova/bge-small-zh-v1.5'
+    LOCAL_EMBEDDING_MODEL: cleanEnv(process.env.GOLEM_LOCAL_EMBEDDING_MODEL) || 'Xenova/bge-small-zh-v1.5',
+    GEMINI_URLS: (process.env.GEMINI_URLS || '').split(',').map(u => cleanEnv(u, true)).filter(u => u),
 };
 
 // 驗證關鍵 Token
@@ -76,8 +78,26 @@ if (CONFIG.TG_TOKEN || CONFIG.DC_TOKEN) {
 // 計算路徑前綴 (固定為 single)
 const MODE_DIR = 'single';
 let LOG_BASE_DIR = path.join(process.cwd(), 'logs', MODE_DIR);
-let MEMORY_BASE_DIR = path.resolve(CONFIG.USER_DATA_DIR || './golem_memory');
-let KNOWLEDGE_BASE_DIR = path.join(process.cwd(), 'golem_memory', 'knowledge');
+
+// 🎯 Profile 導向的核心路徑計算 (Titan Chronos 模式)
+const getMemoryBaseDir = () => {
+    // 優先序：
+    // 1. 若有設定 PLAYWRIGHT_PROFILE，則使用 ./profiles/{profile}
+    // 2. 若無 profile 但有手動設定 USER_DATA_DIR，則遵循之
+    // 3. 以上皆無，回退至 ./golem_memory (向後相容)
+    const profile = CONFIG.PLAYWRIGHT_PROFILE;
+    if (profile) return path.resolve(`./profiles/${profile}`);
+    
+    return path.resolve(CONFIG.USER_DATA_DIR || './golem_memory');
+};
+
+const getKnowledgeBaseDir = () => path.join(getMemoryBaseDir(), 'knowledge');
+
+// 🔄 導出動態路徑
+const paths = {
+    get MEMORY_BASE_DIR() { return getMemoryBaseDir(); },
+    get KNOWLEDGE_BASE_DIR() { return getKnowledgeBaseDir(); }
+};
 
 // 🔄 熱重載支援函數
 const reloadConfig = () => {
@@ -91,7 +111,8 @@ const reloadConfig = () => {
     CONFIG.TG_AUTH_MODE = cleanEnv(process.env.TG_AUTH_MODE) || 'ADMIN';
     CONFIG.TG_CHAT_ID = cleanEnv(process.env.TG_CHAT_ID);
     CONFIG.DC_TOKEN = cleanEnv(process.env.DISCORD_TOKEN);
-    CONFIG.USER_DATA_DIR = cleanEnv(process.env.USER_DATA_DIR || './golem_memory', true);
+    CONFIG.PLAYWRIGHT_PROFILE = cleanEnv(process.env.PLAYWRIGHT_PROFILE || '');
+    CONFIG.USER_DATA_DIR = cleanEnv(process.env.USER_DATA_DIR || '', true);
 
     // 更新陣列 (Mutate in-place 以利 reference 共用)
     const newApiKeys = (process.env.GEMINI_API_KEYS || '').split(',').map(k => cleanEnv(k)).filter(k => k && !isPlaceholder(k));
@@ -122,6 +143,10 @@ const reloadConfig = () => {
     CONFIG.EMBEDDING_PROVIDER = cleanEnv(process.env.GOLEM_EMBEDDING_PROVIDER) || 'local';
     CONFIG.LOCAL_EMBEDDING_MODEL = cleanEnv(process.env.GOLEM_LOCAL_EMBEDDING_MODEL) || 'Xenova/bge-small-zh-v1.5';
 
+    const newGeminiUrls = (process.env.GEMINI_URLS || '').split(',').map(u => cleanEnv(u, true)).filter(u => u);
+    CONFIG.GEMINI_URLS.length = 0;
+    CONFIG.GEMINI_URLS.push(...newGeminiUrls);
+
     // 重新載入 GOLEMS_CONFIG (固定為單機模式)
     GOLEMS_CONFIG.length = 0;
     const hasToken = CONFIG.TG_TOKEN || CONFIG.DC_TOKEN;
@@ -149,7 +174,7 @@ module.exports = {
     GOLEM_MODE,
     MODE_DIR,
     LOG_BASE_DIR,
-    MEMORY_BASE_DIR,
-    KNOWLEDGE_BASE_DIR,
+    get MEMORY_BASE_DIR() { return paths.MEMORY_BASE_DIR; },
+    get KNOWLEDGE_BASE_DIR() { return paths.KNOWLEDGE_BASE_DIR; },
     reloadConfig
 };

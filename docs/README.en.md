@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo.png" width="400" alt="Project Golem Logo" />
+  <img src="../assets/logo.png" width="400" alt="Project Golem Logo" />
   <h1>🤖 Project Golem v9.1</h1>
   <p><b>Ultimate Chronos + MultiAgent + Social Node Edition</b></p>
 
@@ -19,7 +19,7 @@
     <a href="#-system-architecture">Architecture</a>
   </p>
 
-  [繁體中文](README.md) | **English**
+  [繁體中文](../README.md) | **English**
 </div>
 
 ---
@@ -82,33 +82,33 @@ To help you better monitor and manage your Golem, we provide a fully functional 
 
 ### 🎛️ Tactical Console (Dashboard Home)
 *Oversee your high-level AI agent status, active processes, and dynamic behavior decisions.*
-<img src="assets/1.jpg" width="800" alt="Tactical Console - Smart Dialogue Parsing">
-<img src="assets/2.jpg" width="800" alt="Tactical Console - Dynamic Behavior Decision">
-<img src="assets/10.jpg" width="800" alt="Tactical Console - Performance Monitoring">
+<img src="../assets/1.jpg" width="800" alt="Tactical Console - Smart Dialogue Parsing">
+<img src="../assets/2.jpg" width="800" alt="Tactical Console - Dynamic Behavior Decision">
+<img src="../assets/10.jpg" width="800" alt="Tactical Console - Performance Monitoring">
 
 ### 💻 Web Terminal (Interactions)
 *Communicate with Golem with zero latency via web interface, featuring cross-platform syncing and task tracking.*
-<img src="assets/3.jpg" width="800" alt="Web Terminal - Cross-platform Support">
+<img src="../assets/3.jpg" width="800" alt="Web Terminal - Cross-platform Support">
 
 ### 📚 Skill Manager
 *Install or toggle specialized AI skills like hot-swappable USB drives with seamless API integration.*
-<img src="assets/4.jpg" width="800" alt="Skill Manager - Seamless API Integration">
-<img src="assets/5.jpg" width="800" alt="Skill Manager - Customized Interface">
+<img src="../assets/4.jpg" width="800" alt="Skill Manager - Seamless API Integration">
+<img src="../assets/5.jpg" width="800" alt="Skill Manager - Customized Interface">
 
 ### 👥 Personality Settings
 *Configure Golem's basic attributes and behavioral patterns.*
-<img src="assets/6.jpg" width="800" alt="Personality Settings">
-<img src="assets/7.jpg" width="800" alt="Personality Market">
+<img src="../assets/6.jpg" width="800" alt="Personality Settings">
+<img src="../assets/7.jpg" width="800" alt="Personality Market">
 
 ### 🧠 Memory Core
 *View and manage Golem's memory core.*
-<img src="assets/8.jpg" width="800" alt="Memory Core">
+<img src="../assets/8.jpg" width="800" alt="Memory Core">
 
 ### ⚙️ Settings
 *Manage security permissions, API keys, and deep system integrations intuitively.*
-<img src="assets/9.jpg" width="800" alt="Settings - Deep System Integration">
-<img src="assets/10.jpg" width="800" alt="Settings - Security & Permissions">
-<img src="assets/11.jpg" width="800" alt="Settings - Command Whitelist">
+<img src="../assets/9.jpg" width="800" alt="Settings - Deep System Integration">
+<img src="../assets/10.jpg" width="800" alt="Settings - Security & Permissions">
+<img src="../assets/11.jpg" width="800" alt="Settings - Command Whitelist">
 
 ---
 
@@ -202,11 +202,11 @@ To keep this page concise, more in-depth technical details have been moved to de
 | Document | Description |
 |------|------|
 | [🤖 AI Agent Guide](AGENTS.en.md) | **[Important]** Guidelines for AI assistants and developers on code maintenance |
-| [🧠 Memory System Architecture](docs/記憶系統架構說明.md) | Pyramid compression principles and storage path analysis |
-| [🖥️ Web Dashboard Guide](docs/Web-Dashboard-使用說明.md) | Extended details for each tab in the Web UI |
-| [🛠️ Developer Implementation Guide](docs/開發者實作指南.md) | How to implement new Skills and Golem Protocol specifications |
-| [🎮 Command Reference List](docs/golem指令說明一覽表.md) | Quick reference for Telegram / Discord commands |
-| [🔑 Getting Robot Tokens](docs/如何獲取TG或DC的Token及開啟權限.md) | How to set up your external communication platforms |
+| [🧠 Memory System Architecture](記憶系統架構說明.md) | Pyramid compression principles and storage path analysis |
+| [🖥️ Web Dashboard Guide](Web-Dashboard-使用說明.md) | Extended details for each tab in the Web UI |
+| [🛠️ Developer Implementation Guide](開發者實作指南.md) | How to implement new Skills and Golem Protocol specifications |
+| [🎮 Command Reference List](golem指令說明一覽表.md) | Quick reference for Telegram / Discord commands |
+| [🔑 Getting Robot Tokens](如何獲取TG或DC的Token及開啟權限.md) | How to set up your external communication platforms |
 
 ---
 
