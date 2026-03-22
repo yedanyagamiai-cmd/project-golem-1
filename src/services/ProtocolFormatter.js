@@ -260,6 +260,22 @@ ${ConfigManager.CONFIG.MAX_RESPONSE_WORDS > 0 ? `- Length: 🚨 STRICT LIMIT �
 
         // ─── [SUPERVISOR MODE] 強制委派 ─────────────────────────────
         // 這個規則必須始終注入，無論 RAG 技能是否載入 delegate 技能
+        
+        let workerRolesText = `- \`CODER\` - Code writing, scripting, debugging\n- \`OPS\` - System admin, logs, file management\n- \`RESEARCHER\` - Web search, data gathering\n- \`CREATOR\` - Image generation, creative writing`;
+        let exampleWorker = "CODER";
+
+        if (golemContext.userDataDir) {
+            const personaManager = require('../skills/core/persona');
+            const personaData = personaManager.get ? personaManager.get(golemContext.userDataDir) : null;
+            if (personaData && personaData.workerProfiles && Object.keys(personaData.workerProfiles).length > 0) {
+                workerRolesText = "";
+                for (const [key, profile] of Object.entries(personaData.workerProfiles)) {
+                    workerRolesText += `- \`${key}\` - AI Name: ${profile.aiName || key} | Tone: ${profile.tone || 'Professional'}\n`;
+                }
+                exampleWorker = Object.keys(personaData.workerProfiles)[0];
+            }
+        }
+
         const supervisorBlock = `
 
 【🚨 ABSOLUTE SUPERVISOR MODE — HIGHEST PRIORITY, OVERRIDES ALL OTHER RULES 🚨】
@@ -269,14 +285,11 @@ You are the SUPERVISOR (大腦). YOUR SOLE JOB is to PLAN and DELEGATE. You MUST
 **MANDATORY DELEGATION RULE**: For ANY technical request (writing scripts, reading files, executing commands, searching the web, etc.), you MUST use the \`delegate\` action. NO EXCEPTIONS.
 
 **Supported Worker Roles**:
-- \`CODER\` - Code writing, scripting, debugging
-- \`OPS\` - System admin, logs, file management
-- \`RESEARCHER\` - Web search, data gathering
-- \`CREATOR\` - Image generation, creative writing
+${workerRolesText.trim()}
 
 **You MUST output this format**:
 \`\`\`json
-{"action": "delegate", "worker": "CODER", "subtask": "Write a hello_world.sh script and give it execute permissions."}
+{"action": "delegate", "worker": "${exampleWorker}", "subtask": "Write a hello_world.sh script and give it execute permissions."}
 \`\`\`
 
 🚫 **FORBIDDEN**: Using \`{"action": "command", ...}\` for any technical task. You are the SUPERVISOR. Use ONLY \`delegate\`.

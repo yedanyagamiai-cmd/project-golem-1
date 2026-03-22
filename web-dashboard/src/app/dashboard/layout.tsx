@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, Users, Database, Globe, ChevronLeft, ChevronRight, Terminal, BrainCircuit, BookOpen, Settings, User, UserPlus, MessageSquare, Plug } from "lucide-react";
+import { LayoutDashboard, Users, Database, Globe, ChevronLeft, ChevronRight, Terminal, BrainCircuit, BookOpen, Settings, User, UserPlus, MessageSquare, Plug, Bot } from "lucide-react";
 import { GolemProvider, useGolem } from "@/components/GolemContext";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { BootScreen } from "@/components/BootScreen";
@@ -25,6 +25,7 @@ function DashboardSidebar({
         { name: "MCP 工具", href: "/dashboard/mcp", icon: Plug },
         { name: "人格設定", href: "/dashboard/persona", icon: User },
         { name: "Agent 會議室", href: "/dashboard/agents", icon: Users },
+        { name: "子代理專家", href: "/dashboard/sub-agents", icon: Bot },
         { name: "辦公室模式", href: "/dashboard/office", icon: Users },
         { name: "記憶核心", href: "/dashboard/memory", icon: BrainCircuit },
         { name: "系統總表", href: "/dashboard/settings", icon: Settings },
