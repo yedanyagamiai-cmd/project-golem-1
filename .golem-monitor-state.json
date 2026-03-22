@@ -1,0 +1,8 @@
+{
+  "last_sha": "de1a87d",
+  "last_run": "2026-03-23T00:00:00Z",
+  "our_prs_open": [194, 192, 190, 188, 187, 186, 185, 184, 180, 167, 158],
+  "last_fix": "fix-tests-protocol-formatter-telegram-factory",
+  "last_pr": 194,
+  "notes": "Upstream merged PR #193 (develop→main): major additions including MCP support (MCPClient+MCPManager), GracefulShutdown, OpossumBridge (circuit breaker), TelegramBotFactory, GrammyBridge, web-dashboard routes (chat/config/skills/upload), LanceDBProDriver, embedding providers, self-evolution skill. Our PR #192 is now obsolete - self-evolution.js on main already has cwdWithSep+replaceAll fixes. New PR #194 fixes 2 new test failures from #193: ProtocolFormatter CONFIG mock + TelegramBotFactory Jest wrapper. 314/327 tests passing. 5 remaining failures: SystemLogger, NeuroShunter, ConversationManager, PageInteractor, AutonomyManager (pre-existing)."
+}

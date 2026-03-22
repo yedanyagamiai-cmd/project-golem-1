@@ -11,7 +11,7 @@ describe('ConversationManager', () => {
         jest.useFakeTimers();
         mockBrain = {
             recall: jest.fn().mockResolvedValue([]),
-            sendMessage: jest.fn().mockResolvedValue('AI Response'),
+            sendMessage: jest.fn().mockResolvedValue({ text: 'AI Response', attachments: [] }),
             _appendChatLog: jest.fn()
         };
         mockShunter = { dispatch: jest.fn().mockResolvedValue() };
@@ -66,7 +66,7 @@ describe('ConversationManager', () => {
     test('processQueue should execute brain and dispatch', async () => {
         // Restore real _processQueue for this test
         cm._processQueue.mockRestore();
-        cm.queue.push({ ctx: mockCtx, text: 'hello' });
+        cm.queue.push({ ctx: mockCtx, text: 'hello', options: {} });
         
         await cm._processQueue();
         

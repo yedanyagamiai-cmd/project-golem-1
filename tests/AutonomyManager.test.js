@@ -2,7 +2,19 @@ const AutonomyManager = require('../src/managers/AutonomyManager');
 const ConfigManager = require('../src/config');
 const fs = require('fs');
 
-jest.mock('fs');
+const mockReadFile = jest.fn();
+const mockWriteFile = jest.fn();
+jest.mock('fs', () => ({
+    existsSync: jest.fn(),
+    readFileSync: jest.fn(),
+    writeFileSync: jest.fn(),
+    readdirSync: jest.fn(),
+    mkdirSync: jest.fn(),
+    promises: {
+        readFile: jest.fn(),
+        writeFile: jest.fn(),
+    }
+}));
 jest.mock('../src/managers/ChatLogManager');
 jest.mock('../src/skills/core/log-archive', () => ({
     run: jest.fn().mockResolvedValue('Archive successful')
@@ -26,6 +38,9 @@ describe('AutonomyManager', () => {
         manager = new AutonomyManager(mockBrain, mockController, {});
         ConfigManager.CONFIG.TG_TOKEN = 'test_token';
         ConfigManager.LOG_BASE_DIR = '/tmp/logs';
+        ConfigManager.CONFIG.ARCHIVE_THRESHOLD_YESTERDAY = 3;
+        ConfigManager.CONFIG.ARCHIVE_THRESHOLD_TODAY = 24;
+        ConfigManager.CONFIG.ENABLE_LOG_NOTIFICATIONS = true;
     });
 
     test('setIntegrations sets properties', () => {
@@ -43,12 +58,16 @@ describe('AutonomyManager', () => {
         jest.useRealTimers();
     });
 
-    test('start aborts if no tokens', () => {
+    test('start always calls resumeOrScheduleAwakening regardless of tokens', () => {
+        // v9.1.x removed the token guard from start() — autonomy scheduling is unconditional.
+        jest.useFakeTimers();
         ConfigManager.CONFIG.TG_TOKEN = '';
         ConfigManager.CONFIG.DC_TOKEN = '';
-        const spy = jest.spyOn(manager, 'scheduleNextAwakening');
+        const spy = jest.spyOn(manager, 'resumeOrScheduleAwakening').mockImplementation(() => {});
+        jest.spyOn(manager, 'scheduleNextArchive').mockImplementation(() => {});
         manager.start();
-        expect(spy).not.toHaveBeenCalled();
+        expect(spy).toHaveBeenCalled();
+        jest.useRealTimers();
     });
 
     test('checkArchiveStatus triggers archive if threshold met', async () => {
@@ -87,7 +106,9 @@ describe('AutonomyManager', () => {
         const oldTask = { time: new Date(now - 1000).toISOString(), task: 'do something' };
         
         fs.existsSync.mockReturnValue(true);
-        fs.readFileSync.mockReturnValue(JSON.stringify([oldTask]));
+        // Code uses fs.promises.readFile (async) — mock accordingly
+        fs.promises.readFile.mockResolvedValue(JSON.stringify([oldTask]));
+        fs.promises.writeFile.mockResolvedValue();
         
         manager.convoManager = { enqueue: jest.fn().mockResolvedValue() };
         manager.getAdminContext = jest.fn().mockResolvedValue({});
@@ -95,7 +116,7 @@ describe('AutonomyManager', () => {
         await manager.timeWatcher();
         
         expect(manager.convoManager.enqueue).toHaveBeenCalled();
-        expect(fs.writeFileSync).toHaveBeenCalled(); // Update schedules
+        expect(fs.promises.writeFile).toHaveBeenCalled(); // Code uses async writeFile
     });
 
     test('manifestFreeWill executes reflection 20% of time', async () => {

@@ -57,7 +57,10 @@ class SystemLogger {
 
         try {
             // 檢查是否手動關閉了系統日誌
-            if (process.env.ENABLE_SYSTEM_LOG === 'false') return;
+            if (process.env.ENABLE_SYSTEM_LOG === 'false') {
+                this._isLogging = false; // [Fix] reset guard so future calls are not blocked
+                return;
+            }
         } catch (e) {
             this._isLogging = false;
             return;

@@ -34,7 +34,15 @@ async function runTests() {
   console.log('✅ TelegramBotFactory tests passed.');
 }
 
-runTests().catch(err => {
-  console.error('❌ Test failed:', err);
-  process.exit(1);
+// Jest integration: wrap manual runner in a test() block so Jest discovers it
+test('TelegramBotFactory passes all manual assertions', async () => {
+  await runTests();
 });
+
+// Allow direct node execution as well
+if (require.main === module) {
+  runTests().catch(err => {
+    console.error('❌ Test failed:', err);
+    process.exit(1);
+  });
+}

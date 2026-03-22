@@ -11,8 +11,14 @@ describe('PageInteractor Improvements', () => {
             type: jest.fn().mockResolvedValue(undefined),
             press: jest.fn().mockResolvedValue(undefined),
         };
+        const mockInputEl = {
+            focus: jest.fn().mockResolvedValue(undefined),
+            click: jest.fn().mockResolvedValue(undefined),
+            scrollIntoViewIfNeeded: jest.fn().mockResolvedValue(undefined),
+        };
         mockPage = {
-            $: jest.fn().mockResolvedValue({ focus: jest.fn().mockResolvedValue(undefined) }),
+            $: jest.fn().mockResolvedValue(mockInputEl),
+            waitForSelector: jest.fn().mockResolvedValue(undefined),
             focus: jest.fn().mockResolvedValue(undefined),
             evaluate: jest.fn().mockResolvedValue(undefined),
             keyboard: mockKeyboard,
@@ -40,7 +46,8 @@ describe('PageInteractor Improvements', () => {
         
         await interactor._typeInput(selector, text);
 
-        expect(mockPage.focus).toHaveBeenCalledWith(expect.stringContaining(selector));
+        // Code uses page.$(selector) then inputEl.focus() — not page.focus(selector)
+        expect(mockPage.$).toHaveBeenCalledWith(expect.stringContaining(selector));
         expect(mockPage.evaluate).toHaveBeenCalled();
         expect(mockKeyboard.type).toHaveBeenCalledWith(' ', { delay: 1 });
         expect(mockKeyboard.press).toHaveBeenCalledWith('Backspace');

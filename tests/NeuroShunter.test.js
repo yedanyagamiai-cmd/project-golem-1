@@ -42,9 +42,11 @@ describe('NeuroShunter', () => {
     });
 
     test('dispatch suppresses reply if options.suppressReply is true', async () => {
+        // v9.1.13: auto-unsuppress only fires when actions=[]. Provide an action to keep suppression active.
+        SkillHandler.execute.mockResolvedValue(true);
         ResponseParser.parse.mockReturnValue({
             reply: 'Hello there',
-            actions: []
+            actions: [{ action: 'dummy_skill' }]
         });
 
         await NeuroShunter.dispatch(mockCtx, 'raw', mockBrain, mockController, { suppressReply: true });
@@ -60,7 +62,7 @@ describe('NeuroShunter', () => {
 
         await NeuroShunter.dispatch(mockCtx, '[INTERVENE] raw', mockBrain, mockController, { suppressReply: true });
 
-        expect(mockCtx.reply).toHaveBeenCalledWith('Hello there');
+        expect(mockCtx.reply).toHaveBeenCalledWith('Hello there', { attachments: [] });
     });
 
     test('dispatch formats reply for telegram with mention', async () => {
@@ -74,7 +76,7 @@ describe('NeuroShunter', () => {
 
         await NeuroShunter.dispatch(mockCtx, 'raw', mockBrain, mockController);
 
-        expect(mockCtx.reply).toHaveBeenCalledWith('@user Hello');
+        expect(mockCtx.reply).toHaveBeenCalledWith('@user Hello', { attachments: [] });
     });
 
     test('dispatch handles multi_agent action', async () => {
@@ -116,16 +118,18 @@ describe('NeuroShunter', () => {
         expect(CommandHandler.execute).toHaveBeenCalled();
     });
 
-    test('dispatch skips actions if suppressReply is true and no INTERVENE', async () => {
+    test('dispatch suppresses only reply (not actions) if suppressReply is true and no INTERVENE', async () => {
+        // v9.1.13: suppressReply suppresses the reply message but actions still execute.
+        SkillHandler.execute.mockResolvedValue(true);
         ResponseParser.parse.mockReturnValue({
-            reply: '',
-            actions: [{ action: 'command' }]
+            reply: 'should be suppressed',
+            actions: [{ action: 'custom_skill' }]
         });
 
         await NeuroShunter.dispatch(mockCtx, 'raw', mockBrain, mockController, { suppressReply: true });
 
+        expect(mockCtx.reply).not.toHaveBeenCalled();  // reply is suppressed
+        expect(SkillHandler.execute).toHaveBeenCalled(); // but actions still run
         expect(MultiAgentHandler.execute).not.toHaveBeenCalled();
-        expect(SkillHandler.execute).not.toHaveBeenCalled();
-        expect(CommandHandler.execute).not.toHaveBeenCalled();
     });
 });
