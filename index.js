@@ -543,8 +543,8 @@ async function handleUnifiedMessage(ctx, forceTargetId = null) {
         return;
     }
 
-    if (global.multiAgentListeners && global.multiAgentListeners.has(ctx.chatId)) {
-        const callback = global.multiAgentListeners.get(ctx.chatId);
+    if (InteractiveMultiAgent.multiAgentListeners && InteractiveMultiAgent.multiAgentListeners.has(ctx.chatId)) {
+        const callback = InteractiveMultiAgent.multiAgentListeners.get(ctx.chatId);
         callback(ctx.text);
         return;
     }

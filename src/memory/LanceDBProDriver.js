@@ -3,6 +3,9 @@ const path = require('path');
 const KeyChain = require('../services/KeyChain');
 const { CONFIG, KNOWLEDGE_BASE_DIR } = require('../config');
 
+// ✨ 快取 Jiti 實例，避免重複初始化開銷
+let cachedJiti = null;
+
 /**
  * 🚀 LanceDB Pro Memory Driver
  * Wraps memory-lancedb-pro for project-golem
@@ -22,11 +25,13 @@ class LanceDBProDriver {
         if (!fs.existsSync(this.baseDir)) fs.mkdirSync(this.baseDir, { recursive: true });
 
         // Use jiti to load memory-lancedb-pro components from sub-modules
-        const { createJiti } = require('jiti');
-        const jiti = createJiti(__filename);
+        if (!cachedJiti) {
+            const { createJiti } = require('jiti');
+            cachedJiti = createJiti(__filename);
+        }
         
-        const { MemoryStore } = await jiti.import('memory-lancedb-pro/src/store.js');
-        const { createRetriever, DEFAULT_RETRIEVAL_CONFIG } = await jiti.import('memory-lancedb-pro/src/retriever.js');
+        const { MemoryStore } = await cachedJiti.import('memory-lancedb-pro/src/store.js');
+        const { createRetriever, DEFAULT_RETRIEVAL_CONFIG } = await cachedJiti.import('memory-lancedb-pro/src/retriever.js');
         
         // 1. Setup Embedder Wrapper
         const projectEmbedder = await this._getProjectEmbedder();

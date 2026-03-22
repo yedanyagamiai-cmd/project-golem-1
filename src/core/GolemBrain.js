@@ -370,6 +370,8 @@ class GolemBrain {
         // 確保在寫入前已初始化 (防呆)
         this.chatLogManager.init().then(() => {
             this.chatLogManager.append(entry);
+        }).catch(err => {
+            console.error(`❌ [Brain][${this.golemId}] appendedChatLog error:`, err);
         });
     }
 
@@ -565,8 +567,15 @@ class GolemBrain {
         }
 
         let lastError = null;
+        let attempt = 0;
         for (const url of urls) {
             try {
+                if (attempt > 0) {
+                    const delay = Math.min(1000 * Math.pow(2, attempt), 10000); // 最大延遲 10 秒
+                    console.log(`⏳ [Brain] 等待 ${delay}ms 後重試連線...`);
+                    await new Promise(r => setTimeout(r, delay));
+                }
+                attempt++;
                 console.log(`📡 [Brain] 正在嘗試導航至: ${url}`);
                 // 等待 domcontentloaded 以確保基本結構已載入
                 await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });

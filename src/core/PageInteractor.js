@@ -4,6 +4,9 @@
 const { TIMINGS, LIMITS } = require('./constants');
 const ResponseExtractor = require('./ResponseExtractor');
 
+// 共用的按鈕偵測關鍵字 (供 autoClick 快速點擊使用)
+const WORKSPACE_SAVE_KEYWORDS = ['儲存活動', '儲存', '建立', '建立活動', 'Save event', 'Save', 'Create'];
+
 class PageInteractor {
     /**
      * @param {import('puppeteer').Page} page - Puppeteer 頁面實例
@@ -313,7 +316,12 @@ class PageInteractor {
 
         try {
             console.log("⚓ [PageInteractor] 正在將 Chrome 視窗自動移動至隱藏位置...");
-            const session = await this.page.context().newCDPSession(this.page);
+            
+            // 複用 CDPSession 以提升效能
+            if (!this._persistedCdpSession) {
+                this._persistedCdpSession = await this.page.context().newCDPSession(this.page);
+            }
+            const session = this._persistedCdpSession;
 
             // Playwright 中 getWindowForTarget 標籤可能略有不同，但協議本身一致
             const { windowId } = await session.send('Browser.getWindowForTarget');
@@ -334,7 +342,7 @@ class PageInteractor {
                     windowState: 'normal'
                 }
             });
-            await session.detach();
+            // 註: 不再呼叫 await session.detach()，保留給下次視窗移動時使用
             console.log("✅ [PageInteractor] 視窗已成功移動。");
         } catch (e) {
             console.warn(`⚠️ [PageInteractor] 視窗移動失敗: ${e.message}`);
@@ -350,8 +358,7 @@ class PageInteractor {
 
             await new Promise(r => setTimeout(r, 1500));
 
-            const clickedButtonText = await this.page.evaluate(() => {
-                const targetKeywords = ['儲存活動', '儲存', '建立', '建立活動', 'Save event', 'Save', 'Create'];
+            const clickedButtonText = await this.page.evaluate((keywords) => {
                 const buttons = Array.from(document.querySelectorAll('button, [role="button"], a.btn'));
 
                 for (let i = buttons.length - 1; i >= 0; i--) {
@@ -369,13 +376,13 @@ class PageInteractor {
                         continue;
                     }
 
-                    if (targetKeywords.some(kw => text === kw || text.includes(kw))) {
+                    if (keywords.some(kw => text === kw || text.includes(kw))) {
                         btn.click();
                         return text;
                     }
                 }
                 return null;
-            });
+            }, WORKSPACE_SAVE_KEYWORDS);
 
             if (clickedButtonText) {
                 console.log(`🎯 [PageInteractor] 幽靈突刺成功！已自動幫忙點擊：【${clickedButtonText}】`);
