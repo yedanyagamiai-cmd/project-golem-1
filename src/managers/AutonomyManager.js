@@ -49,12 +49,8 @@ class AutonomyManager {
     async checkArchiveStatus() {
         console.log(`🕒 [Autonomy] 定時檢查日誌壓縮狀態 (雙重門檻掃描: ${ConfigManager.CONFIG.ARCHIVE_CHECK_INTERVAL}min)...`);
         try {
-            const ChatLogManager = require('../managers/ChatLogManager');
-            // ✅ [H-1 Fix] 傳入正確 golemId/logDir，確保掃描正確目錄
-            const logManager = new ChatLogManager({
-                golemId: this.golemId,
-                logDir: ConfigManager.LOG_BASE_DIR
-            });
+            const logManager = this.brain.chatLogManager;
+            if (!logManager) return;
             const logDir = logManager.dirs.hourly;
 
             const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -113,11 +109,12 @@ class AutonomyManager {
 
         const scheduleFile = path.join(logDir, 'schedules.json');
 
-        // M-5 Fix: 寫入前先確保目錄存在，防止拍程觸發在首次對話之前導致寫入失敗
-        fs.mkdirSync(path.dirname(scheduleFile), { recursive: true });
+        // M-5 Fix: 異步寫入前確保目錄存在
+        await fs.promises.mkdir(path.dirname(scheduleFile), { recursive: true }).catch(() => {});
 
         // 1. 讀取並檢查檔案資料庫 (New Path: logs/schedules.json)
-        if (fs.existsSync(scheduleFile)) {
+        const stat = await fs.promises.stat(scheduleFile).catch(() => null);
+        if (stat) {
             try {
                 const rawData = await fs.promises.readFile(scheduleFile, 'utf-8');
                 if (rawData.trim()) {
@@ -289,13 +286,8 @@ class AutonomyManager {
         console.log(`🧠 [Autonomy][${this.golemId}] 啟動自我反思程序...`);
 
         // 1. 讀取最近的對話摘要 (Tier 1)
-        const ChatLogManager = require('../managers/ChatLogManager');
-        const logManager = new ChatLogManager({
-            golemId: this.golemId,
-            logDir: ConfigManager.LOG_BASE_DIR
-        });
-
-        const recentSummaries = logManager.readTier('daily', 3);
+        const logManager = this.brain.chatLogManager;
+        const recentSummaries = logManager ? await logManager.readTierAsync('daily', 3) : [];
         const summaryContext = recentSummaries.map(s => `[${s.date}] ${s.content}`).join('\n\n');
 
         // 2. 建構反思 Prompt

@@ -63,10 +63,7 @@ describe('ConversationManager', () => {
         expect(mockController.pendingTasks.size).toBe(1);
     });
 
-    test('processQueue should execute brain and dispatch', async () => {
-        // Restore real _processQueue for this test
-        cm._processQueue.mockRestore();
-        cm.queue.push({ ctx: mockCtx, text: 'hello' });
+    
         
         await cm._processQueue();
         

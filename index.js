@@ -109,7 +109,6 @@ function getOrCreateGolem() {
     const brain = new GolemBrain({
         golemId,
         userDataDir: ConfigManager.MEMORY_BASE_DIR,
-        logDir: ConfigManager.LOG_BASE_DIR,
         logDir: ConfigManager.LOG_BASE_DIR
     });
     const controller = new TaskController({ golemId });
@@ -156,14 +155,19 @@ function getOrCreateGolem() {
 
         _isCoreInitialized = true;
     }
-    const fsSync = require('fs');
-    fsSync.watch(process.cwd(), async (eventType, filename) => {
+    // [H-6, S-5] Clean up redundant requires, handle watch race condition gracefully
+    fs_sync.watch(process.cwd(), async (eventType, filename) => {
         if (filename === '.reincarnate_signal.json') {
             try {
-                if (!fsSync.existsSync('.reincarnate_signal.json')) return;
-                const signalRaw = fsSync.readFileSync('.reincarnate_signal.json', 'utf-8');
+                let signalRaw;
+                try {
+                    signalRaw = fs_sync.readFileSync('.reincarnate_signal.json', 'utf-8');
+                    fs_sync.unlinkSync('.reincarnate_signal.json');
+                } catch (e) {
+                    if (e.code === 'ENOENT') return; // 已被其他觸發處理
+                    throw e;
+                }
                 const { summary } = JSON.parse(signalRaw);
-                fsSync.unlinkSync('.reincarnate_signal.json');
                 console.log("🔄 [系統] 啟動記憶轉生程序！正在開啟新對話...");
 
                 const instance = getOrCreateGolem();
@@ -313,12 +317,9 @@ function getOrCreateGolem() {
             }
 
             // [v9.1.5 Fix]: Verify persona.json to decide actual status
-            const pathSync = require('path');
-            const fsSync = require('fs');
+            const personaPath = path_sync.resolve(ConfigManager.MEMORY_BASE_DIR, 'persona.json');
 
-            const personaPath = pathSync.resolve(ConfigManager.MEMORY_BASE_DIR, 'persona.json');
-
-            if (fsSync.existsSync(personaPath)) {
+            if (fs_sync.existsSync(personaPath)) {
                 instance.brain.status = 'running';
                 // ✅ [Fix] 確保在 polling 前 brain.init() 已經準備完畢
                 await instance.brain.init();
@@ -378,8 +379,6 @@ async function handleUnifiedMessage(ctx, forceTargetId = null) {
 
     if (ctx.isAdmin && ctx.text && ctx.text.trim().toLowerCase() === '/sos') {
         try {
-            const fsSync = require('fs');
-
             const targetFiles = [
                 path.join(os.homedir(), 'project-golem', 'golem_selectors.json'),
                 path.join(process.cwd(), 'golem_selectors.json'),
@@ -389,8 +388,8 @@ async function handleUnifiedMessage(ctx, forceTargetId = null) {
 
             let isDeleted = false;
             for (const file of targetFiles) {
-                if (fsSync.existsSync(file)) {
-                    fsSync.unlinkSync(file);
+                if (fs_sync.existsSync(file)) {
+                    fs_sync.unlinkSync(file);
                     console.log(`🗑️ [SOS] 已刪除污染檔案: ${file}`);
                     isDeleted = true;
                 }

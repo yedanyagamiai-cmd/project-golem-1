@@ -367,12 +367,19 @@ class GolemBrain {
      * @param {Object} entry - 日誌紀錄
      */
     _appendChatLog(entry) {
+        if (!this.chatLogManager) return;
+        
         // 確保在寫入前已初始化 (防呆)
-        this.chatLogManager.init().then(() => {
+        if (this.chatLogManager._isInitialized) {
             this.chatLogManager.append(entry);
-        }).catch(err => {
-            console.error(`❌ [Brain][${this.golemId}] appendedChatLog error:`, err);
-        });
+        } else {
+            console.warn(`⚠️ [Brain][${this.golemId}] chatLogManager 未準備就緒，嘗試自動初始化後寫入...`);
+            this.chatLogManager.init().then(() => {
+                this.chatLogManager.append(entry);
+            }).catch(err => {
+                console.error(`❌ [Brain][${this.golemId}] appendedChatLog error:`, err);
+            });
+        }
     }
 
     // ─── Private Methods ─────────────────────────────────────
@@ -474,7 +481,7 @@ class GolemBrain {
                 let historicalMemory = "";
 
                 // 🏛️ Tier 4: 紀元里程碑 (最近 1 個)
-                const eraSummaries = this.chatLogManager.readTier('era', 1);
+                const eraSummaries = await this.chatLogManager.readTierAsync('era', 1);
                 if (eraSummaries.length > 0) {
                     eraSummaries.forEach(s => {
                         historicalMemory += `\n=== [紀元回憶: ${s.date}] ===\n${s.content}\n`;
@@ -482,7 +489,7 @@ class GolemBrain {
                 }
 
                 // 🏛️ Tier 3: 年度回顧 (最近 1 個)
-                const yearlySummaries = this.chatLogManager.readTier('yearly', 1);
+                const yearlySummaries = await this.chatLogManager.readTierAsync('yearly', 1);
                 if (yearlySummaries.length > 0) {
                     yearlySummaries.forEach(s => {
                         historicalMemory += `\n=== [年度回顧: ${s.date}] ===\n${s.content}\n`;
@@ -490,7 +497,7 @@ class GolemBrain {
                 }
 
                 // 🏛️ Tier 2: 月度精華 (最近 3 個)
-                const monthlySummaries = this.chatLogManager.readTier('monthly', 3);
+                const monthlySummaries = await this.chatLogManager.readTierAsync('monthly', 3);
                 if (monthlySummaries.length > 0) {
                     monthlySummaries.forEach(s => {
                         historicalMemory += `\n--- [月度精華: ${s.date}] ---\n${s.content}\n`;
@@ -498,7 +505,7 @@ class GolemBrain {
                 }
 
                 // 🏛️ Tier 1: 每日摘要 (最近 7 天)
-                const dailySummaries = this.chatLogManager.readTier('daily', 7);
+                const dailySummaries = await this.chatLogManager.readTierAsync('daily', 7);
                 if (dailySummaries.length > 0) {
                     dailySummaries.forEach(s => {
                         historicalMemory += `\n--- [${s.date} 摘要] ---\n${s.content}\n`;
@@ -530,7 +537,7 @@ class GolemBrain {
                     console.log(`🧠 [Brain] 階段二：已注入多層記憶 (${tierCounts.join(', ')})。`);
                 } else {
                     // 🕐 Tier 0 Fallback：無任何壓縮摘要時，直接載入全部 hourly 原始對話
-                    const rawMemory = this.chatLogManager.readRecentHourly();
+                    const rawMemory = await this.chatLogManager.readRecentHourlyAsync();
                     if (rawMemory) {
                         const MAX_RAW_CHARS = 200000;
                         const safeRaw = rawMemory.length > MAX_RAW_CHARS

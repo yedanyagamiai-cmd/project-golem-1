@@ -22,6 +22,15 @@ class LanceDBProDriver {
     }
 
     async init() {
+        if (this._initPromise) return this._initPromise;
+        this._initPromise = this._doInit().catch(e => {
+            this._initPromise = null;
+            throw e;
+        });
+        return this._initPromise;
+    }
+
+    async _doInit() {
         if (!fs.existsSync(this.baseDir)) fs.mkdirSync(this.baseDir, { recursive: true });
 
         // Use jiti to load memory-lancedb-pro components from sub-modules

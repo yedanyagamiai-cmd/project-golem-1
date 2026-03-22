@@ -1,6 +1,6 @@
 const AutonomyManager = require('../src/managers/AutonomyManager');
 const ConfigManager = require('../src/config');
-const fs = require('fs');
+const fs = require('fs'); fs.promises = { mkdir: jest.fn().mockResolvedValue(), stat: jest.fn().mockResolvedValue() };
 
 jest.mock('fs');
 jest.mock('../src/managers/ChatLogManager');

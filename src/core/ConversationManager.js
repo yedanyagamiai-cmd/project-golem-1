@@ -21,7 +21,14 @@ class ConversationManager {
 
         // 🔄 [Instance Pooling] 背景監控與定時重啟定時器
         this.UPTIME_LIMIT_MS = 24 * 60 * 60 * 1000; // 24H
-        setInterval(() => this._checkInstanceHealth(), 60 * 60 * 1000); // Check every hour
+        this._healthCheckInterval = setInterval(() => this._checkInstanceHealth(), 60 * 60 * 1000); // Check every hour
+    }
+
+    destroy() {
+        if (this._healthCheckInterval) {
+            clearInterval(this._healthCheckInterval);
+            this._healthCheckInterval = null;
+        }
     }
 
     async _checkInstanceHealth() {
@@ -181,6 +188,17 @@ class ConversationManager {
 
         this.isProcessing = true;
         const task = this.queue.shift();
+
+        // 🧹 [Extra Arch 3] Memory Guard 記憶體上限監控
+        const heapObj = process.memoryUsage();
+        const heapRatio = heapObj.heapUsed / heapObj.heapTotal;
+        if (heapRatio > 0.8) {
+            const usedMB = Math.round(heapObj.heapUsed / 1024 / 1024);
+            const totalMB = Math.round(heapObj.heapTotal / 1024 / 1024);
+            console.warn(`⚠️ [Memory Guard] 堆疊記憶體使用率達 ${(heapRatio * 100).toFixed(1)}% (${usedMB}MB / ${totalMB}MB)，強制觸發系統回收...`);
+            if (global.gc) global.gc();
+        }
+
         try {
             console.log(`🚀 [Dialogue Queue:${this.golemId}] 從隊列取出，開始處理對話...`);
             console.log(`🗣️ [User->${this.golemId}] 說: ${task.text}${task.attachment ? ' 📎 含有附件' : ''}`, { attachment: task.attachment });
@@ -206,6 +224,8 @@ class ConversationManager {
 
             if (this.silentMode && !isMentioned) {
                 console.log(`🤫 [Dialogue Queue:${this.golemId}] 完全靜默模式啟動中，且未被標記，跳過大腦處理。`);
+                this.isProcessing = false;
+                setTimeout(() => this._processQueue(), 500);
                 return;
             }
 
