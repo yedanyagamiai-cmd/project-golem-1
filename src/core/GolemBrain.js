@@ -131,7 +131,9 @@ class GolemBrain {
         await this._initMemoryDriver();
 
         // 4. Dashboard 整合 (可選)
-        this._linkDashboard();
+        if (!this.isSubAgent) {
+            this._linkDashboard();
+        }
 
         // 5. 新會話: 注入系統 Prompt
         if (forceReload || isNewSession) {

@@ -51,12 +51,93 @@ module.exports.run = async function(ctx) {
         // 1. 喚醒 Worker，帶上專屬 Profile 與共用 Context
         const workerBrain = await AgentFactory.createWorker(supervisorBrain.context, workerRole, targetTools, profile);
         
-        const prompt = `【來自 Supervisor 的委派任務】\n${subtask}\n\n請以 ${profile.aiName || workerRole} 的專業身份盡力完成，完成後回報結果。`;
+        let currentPrompt = `【來自 Supervisor 的委派任務】\n${subtask}\n\n請以 ${profile.aiName || workerRole} 的專業身份盡力完成。若有需要，你可以使用 [GOLEM_ACTION] 呼叫工具。完成所有步驟後，請在回覆中宣告任務完成。`;
         
-        console.log(`[Supervisor] -> 委派給 [\${workerRole}]: 執行中...`);
-        const response = await workerBrain.sendMessage(prompt);
+        console.log(`[Supervisor] -> 委派給 [${workerRole}]: 準備執行中...`);
         
-        console.log(`🧹 [Supervisor] 任務完成，正在回收 [\${workerRole}] 的專屬分頁...`);
+        const ResponseParser = require('../../utils/ResponseParser');
+        const SkillHandler = require('../../core/action_handlers/SkillHandler');
+        const safeguard = require('../../utils/CommandSafeguard');
+        const util = require('util');
+        const execPromise = util.promisify(require('child_process').exec);
+        
+        let finalResponseText = "";
+        let step = 0;
+        const maxSteps = 5;
+
+        while (step < maxSteps) {
+            step++;
+            console.log(`🧠 [Worker:${workerRole}] 回合 ${step}/${maxSteps} 思考中...`);
+            const response = await workerBrain.sendMessage(currentPrompt);
+            finalResponseText += `\n[回合 ${step} 回報]:\n${response.text}`;
+
+            const parsed = ResponseParser.parse(response.text);
+            
+            // 如果子代理人沒有觸發任何行動，代表他已經完成任務或回答完畢
+            if (!parsed.actions || parsed.actions.length === 0) {
+                console.log(`✅ [Worker:${workerRole}] 無後續動作，任務結束。`);
+                break;
+            }
+
+            console.log(`⚙️ [Worker:${workerRole}] 打算執行 ${parsed.actions.length} 個動作...`);
+            let stepObservation = "";
+
+            // 攔截子代理人的 ctx.reply，捕捉技能機制的輸出作為 Observation
+            const workerCtx = {
+                reply: async (msg) => { stepObservation += msg + '\n'; }
+            };
+
+            for (const act of parsed.actions) {
+                if (act.action === 'delegate') {
+                    stepObservation += `[系統退回] 子代理人無權再次委派 (請自行使用工具解決)\n`;
+                    continue;
+                }
+                
+                if (act.action === 'command') {
+                    let cmd = act.parameter || act.cmd;
+                    // 自動驗證並過濾危險指令
+                    const validation = safeguard.validate(cmd, true);
+                    if (!validation.safe) {
+                        stepObservation += `[嚴重錯誤] 指令被系統安全攔截: ${validation.reason}\n`;
+                        console.warn(`🛡️ [Worker:${workerRole}] 攔截危險指令: ${cmd}`);
+                        continue;
+                    }
+                    try {
+                        console.log(`💻 [Worker:${workerRole}] 執行指令: ${validation.sanitizedCmd}`);
+                        const { stdout, stderr } = await execPromise(validation.sanitizedCmd, { timeout: 45000, maxBuffer: 1024 * 1024 * 5 });
+                        const output = stdout || stderr || "✅ 指令執行成功，無特殊輸出";
+                        stepObservation += `[Command Observation]\n${output.substring(0, 3000)}\n`;
+                        if (output.length > 3000) stepObservation += `...\n(輸出過長已截斷)\n`;
+                    } catch (e) {
+                         stepObservation += `[Command Error]\n${e.message}\n${e.stderr || ''}\n`;
+                    }
+                } else {
+                    // 動態技能或 MCP
+                    try {
+                        const isHandled = await SkillHandler.execute(workerCtx, act, workerBrain);
+                        if (!isHandled) {
+                            stepObservation += `[系統錯誤] 找不到名為 '${act.action}' 的技能\n`;
+                        }
+                    } catch (e) {
+                        stepObservation += `[Skill Error] ${act.action}: ${e.message}\n`;
+                    }
+                }
+            }
+
+            if (!stepObservation.trim()) {
+                console.log(`⚠️ [Worker:${workerRole}] 動作執行完畢無任何 Observation，強制中斷。`);
+                break;
+            }
+
+            // 將觀察結果餵回給子代理人
+            currentPrompt = `[System Observation]\n${stepObservation}\n\n請根據以上結果決定下一步。若任務已完成，請直接在文字回覆中報告結果。`;
+        }
+
+        if (step >= maxSteps) {
+            finalResponseText += `\n\n⚠️ (任務已達最大 ${maxSteps} 回合強制終止)`;
+        }
+        
+        console.log(`🧹 [Supervisor] 任務完成，正在回收 [${workerRole}] 的專屬分頁...`);
         try {
             if (workerBrain.page && !workerBrain.page.isClosed()) {
                 await workerBrain.page.close();
@@ -66,7 +147,7 @@ module.exports.run = async function(ctx) {
         }
         
         // 3. 回傳 Observation
-        return `✅ 子代理人 [\${workerRole}] 任務完成！\n【回報內容】：\n${response.text}`;
+        return `✅ 子代理人 [${workerRole}] 執行報告：\n${finalResponseText}`;
     } catch (e) {
         return `❌ 子代理人委派失敗: ${e.message}`;
     }

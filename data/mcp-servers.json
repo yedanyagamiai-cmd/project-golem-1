@@ -7,7 +7,7 @@
       "chrome-devtools-mcp@latest"
     ],
     "env": {},
-    "enabled": true,
+    "enabled": false,
     "description": "Chrome DevTools MCP — 網頁除錯、效能分析、DOM 操作、Lighthouse",
     "cachedTools": [
       {
@@ -134,7 +134,7 @@
     "args": [
       "src/mcp/notebooklm_stdio.py"
     ],
-    "enabled": true,
+    "enabled": false,
     "description": "Google NotebookLM API Server (Stdio Bridge)",
     "env": {},
     "cachedTools": [
