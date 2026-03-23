@@ -22,6 +22,22 @@ function normalizeMemoryMode(modeRaw) {
     return 'lancedb-pro';
 }
 
+function normalizeBackend(backendRaw) {
+    const backend = String(backendRaw || '').trim().toLowerCase();
+    if (backend === 'gemini' || backend === 'ollama' || backend === 'perplexity') {
+        return backend;
+    }
+    return 'gemini';
+}
+
+function normalizeEmbeddingProvider(providerRaw) {
+    const provider = String(providerRaw || '').trim().toLowerCase();
+    if (provider === 'local' || provider === 'ollama') {
+        return provider;
+    }
+    return 'local';
+}
+
 module.exports = function registerSystemRoutes(server) {
     const router = express.Router();
     const requireUpdateExecute = buildOperationGuard(server, 'system_update_execute');
@@ -124,9 +140,15 @@ module.exports = function registerSystemRoutes(server) {
             return res.json({
                 version,
                 userDataDir: envVars.USER_DATA_DIR || './golem_memory',
+                golemBackend: normalizeBackend(envVars.GOLEM_BACKEND),
                 golemMemoryMode: normalizeMemoryMode(envVars.GOLEM_MEMORY_MODE),
-                golemEmbeddingProvider: envVars.GOLEM_EMBEDDING_PROVIDER || 'gemini',
+                golemEmbeddingProvider: normalizeEmbeddingProvider(envVars.GOLEM_EMBEDDING_PROVIDER),
                 golemLocalEmbeddingModel: envVars.GOLEM_LOCAL_EMBEDDING_MODEL || 'Xenova/bge-small-zh-v1.5',
+                golemOllamaBaseUrl: envVars.GOLEM_OLLAMA_BASE_URL || envVars.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
+                golemOllamaBrainModel: envVars.GOLEM_OLLAMA_BRAIN_MODEL || envVars.OLLAMA_BRAIN_MODEL || 'llama3.1:8b',
+                golemOllamaEmbeddingModel: envVars.GOLEM_OLLAMA_EMBEDDING_MODEL || envVars.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text',
+                golemOllamaRerankModel: envVars.GOLEM_OLLAMA_RERANK_MODEL || envVars.OLLAMA_RERANK_MODEL || '',
+                golemOllamaTimeoutMs: envVars.GOLEM_OLLAMA_TIMEOUT_MS || envVars.OLLAMA_TIMEOUT_MS || '60000',
                 golemMode: 'SINGLE',
                 allowRemoteAccess: server.allowRemote,
                 hasRemotePassword: !!(envVars.REMOTE_ACCESS_PASSWORD && envVars.REMOTE_ACCESS_PASSWORD.trim() !== '')
@@ -142,9 +164,15 @@ module.exports = function registerSystemRoutes(server) {
             const {
                 geminiApiKeys,
                 userDataDir,
+                golemBackend,
                 golemMemoryMode,
                 golemEmbeddingProvider,
                 golemLocalEmbeddingModel,
+                golemOllamaBaseUrl,
+                golemOllamaBrainModel,
+                golemOllamaEmbeddingModel,
+                golemOllamaRerankModel,
+                golemOllamaTimeoutMs,
                 allowRemoteAccess,
                 remoteAccessPassword
             } = req.body;
@@ -155,9 +183,15 @@ module.exports = function registerSystemRoutes(server) {
 
             if (geminiApiKeys !== undefined) updates.GEMINI_API_KEYS = geminiApiKeys;
             if (userDataDir) updates.USER_DATA_DIR = userDataDir;
+            if (golemBackend !== undefined) updates.GOLEM_BACKEND = normalizeBackend(golemBackend);
             if (golemMemoryMode !== undefined) updates.GOLEM_MEMORY_MODE = normalizeMemoryMode(golemMemoryMode);
-            if (golemEmbeddingProvider) updates.GOLEM_EMBEDDING_PROVIDER = golemEmbeddingProvider;
+            if (golemEmbeddingProvider !== undefined) updates.GOLEM_EMBEDDING_PROVIDER = normalizeEmbeddingProvider(golemEmbeddingProvider);
             if (golemLocalEmbeddingModel) updates.GOLEM_LOCAL_EMBEDDING_MODEL = golemLocalEmbeddingModel;
+            if (golemOllamaBaseUrl !== undefined) updates.GOLEM_OLLAMA_BASE_URL = String(golemOllamaBaseUrl).trim();
+            if (golemOllamaBrainModel !== undefined) updates.GOLEM_OLLAMA_BRAIN_MODEL = String(golemOllamaBrainModel).trim();
+            if (golemOllamaEmbeddingModel !== undefined) updates.GOLEM_OLLAMA_EMBEDDING_MODEL = String(golemOllamaEmbeddingModel).trim();
+            if (golemOllamaRerankModel !== undefined) updates.GOLEM_OLLAMA_RERANK_MODEL = String(golemOllamaRerankModel).trim();
+            if (golemOllamaTimeoutMs !== undefined) updates.GOLEM_OLLAMA_TIMEOUT_MS = String(golemOllamaTimeoutMs).trim();
             if (allowRemoteAccess !== undefined) updates.ALLOW_REMOTE_ACCESS = String(allowRemoteAccess);
             if (remoteAccessPassword !== undefined) updates.REMOTE_ACCESS_PASSWORD = String(remoteAccessPassword).trim();
             updates.GOLEM_MODE = 'SINGLE';

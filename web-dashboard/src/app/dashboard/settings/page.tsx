@@ -884,8 +884,38 @@ export default function SettingsPage() {
                                             className="w-full bg-secondary/30 border border-border focus:border-primary rounded-lg px-3 py-2 text-sm text-foreground transition-colors"
                                         >
                                             <option value="gemini">Web Gemini (自動化瀏覽器)</option>
+                                            <option value="ollama">Ollama API (本地/私有部署)</option>
                                         </select>
                                     </div>
+
+                                    {config.env.GOLEM_BACKEND === "ollama" && (
+                                        <div className="bg-primary/5 p-4 rounded-xl border border-primary/20 space-y-4 animate-in zoom-in-95">
+                                            <SettingField
+                                                label="Ollama Base URL"
+                                                keyName="GOLEM_OLLAMA_BASE_URL"
+                                                placeholder="http://127.0.0.1:11434"
+                                                desc="Ollama 服務位址（本機預設 11434）。"
+                                                value={config.env.GOLEM_OLLAMA_BASE_URL || ""}
+                                                onChange={(val) => handleChangeEnv("GOLEM_OLLAMA_BASE_URL", val)}
+                                            />
+                                            <SettingField
+                                                label="Ollama Brain Model"
+                                                keyName="GOLEM_OLLAMA_BRAIN_MODEL"
+                                                placeholder="llama3.1:8b"
+                                                desc="作為大腦回應的主要模型。"
+                                                value={config.env.GOLEM_OLLAMA_BRAIN_MODEL || ""}
+                                                onChange={(val) => handleChangeEnv("GOLEM_OLLAMA_BRAIN_MODEL", val)}
+                                            />
+                                            <SettingField
+                                                label="Ollama Timeout (ms)"
+                                                keyName="GOLEM_OLLAMA_TIMEOUT_MS"
+                                                placeholder="60000"
+                                                desc="Ollama HTTP 請求逾時（毫秒）。"
+                                                value={config.env.GOLEM_OLLAMA_TIMEOUT_MS || ""}
+                                                onChange={(val) => handleChangeEnv("GOLEM_OLLAMA_TIMEOUT_MS", val)}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Response Style & Limits */}
@@ -930,10 +960,13 @@ export default function SettingsPage() {
                                             <SettingSelectField
                                                 label="提供者 (Provider)"
                                                 desc="選擇生成向量的引擎。Local 具備隱私性。"
-                                                value={config.env.GOLEM_EMBEDDING_PROVIDER || "local"}
+                                                value={(config.env.GOLEM_EMBEDDING_PROVIDER === "local" || config.env.GOLEM_EMBEDDING_PROVIDER === "ollama")
+                                                    ? config.env.GOLEM_EMBEDDING_PROVIDER
+                                                    : "local"}
                                                 onChange={(val) => handleChangeEnv("GOLEM_EMBEDDING_PROVIDER", val)}
                                                 options={[
-                                                    { value: "local", label: "Local (Transformers.js)" }
+                                                    { value: "local", label: "Local (Transformers.js)" },
+                                                    { value: "ollama", label: "Ollama Embedding" }
                                                 ]}
                                             />
 
@@ -964,14 +997,32 @@ export default function SettingsPage() {
                                                 </div>
                                             )}
 
-                                            {config.env.GOLEM_EMBEDDING_PROVIDER === "gemini" && (
-                                                <div className="bg-amber-500/5 p-4 rounded-xl border border-amber-500/20 space-y-2 animate-in zoom-in-95">
-                                                    <div className="text-xs text-amber-500 font-bold flex items-center gap-2">
-                                                        <AlertCircle className="w-3 h-3" /> 注意事項
-                                                    </div>
-                                                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                                        使用 Gemini Embedding 需要在「通訊平台」或環境變數中設定有效的 <span className="text-foreground font-mono">GEMINI_API_KEYS</span>。
-                                                    </p>
+                                            {config.env.GOLEM_EMBEDDING_PROVIDER === "ollama" && (
+                                                <div className="bg-cyan-500/5 p-4 rounded-xl border border-cyan-500/20 space-y-4 animate-in zoom-in-95">
+                                                    <SettingField
+                                                        label="Ollama Base URL"
+                                                        keyName="GOLEM_OLLAMA_BASE_URL"
+                                                        placeholder="http://127.0.0.1:11434"
+                                                        desc="嵌入模型共用同一個 Ollama 端點。"
+                                                        value={config.env.GOLEM_OLLAMA_BASE_URL || ""}
+                                                        onChange={(val) => handleChangeEnv("GOLEM_OLLAMA_BASE_URL", val)}
+                                                    />
+                                                    <SettingField
+                                                        label="Ollama Embedding Model"
+                                                        keyName="GOLEM_OLLAMA_EMBEDDING_MODEL"
+                                                        placeholder="nomic-embed-text"
+                                                        desc="用於向量化文本的模型名稱。"
+                                                        value={config.env.GOLEM_OLLAMA_EMBEDDING_MODEL || ""}
+                                                        onChange={(val) => handleChangeEnv("GOLEM_OLLAMA_EMBEDDING_MODEL", val)}
+                                                    />
+                                                    <SettingField
+                                                        label="Ollama Rerank Model (Optional)"
+                                                        keyName="GOLEM_OLLAMA_RERANK_MODEL"
+                                                        placeholder="bge-reranker-v2-m3"
+                                                        desc="選填。填寫後會在 recall 結果做二次排序。"
+                                                        value={config.env.GOLEM_OLLAMA_RERANK_MODEL || ""}
+                                                        onChange={(val) => handleChangeEnv("GOLEM_OLLAMA_RERANK_MODEL", val)}
+                                                    />
                                                 </div>
                                             )}
                                         </div>
@@ -1443,6 +1494,7 @@ export default function SettingsPage() {
                                                         'GEMINI_API_KEYS', 'TELEGRAM_TOKEN', 'TG_AUTH_MODE', 'ADMIN_ID', 'TG_CHAT_ID',
                                                         'DISCORD_TOKEN', 'DISCORD_ADMIN_ID', 'USER_DATA_DIR', 'GOLEM_TEST_MODE',
                                                         'GOLEM_MODE', 'GOLEM_MEMORY_MODE', 'GOLEM_EMBEDDING_PROVIDER', 'GOLEM_LOCAL_EMBEDDING_MODEL', 'GITHUB_REPO',
+                                                        'GOLEM_OLLAMA_BASE_URL', 'GOLEM_OLLAMA_BRAIN_MODEL', 'GOLEM_OLLAMA_EMBEDDING_MODEL', 'GOLEM_OLLAMA_RERANK_MODEL', 'GOLEM_OLLAMA_TIMEOUT_MS',
                                                         'MOLTBOOK_API_KEY', 'MOLTBOOK_AGENT_NAME',
                                                         'GOLEM_AWAKE_INTERVAL_MIN', 'GOLEM_AWAKE_INTERVAL_MAX',
                                                         'GOLEM_SLEEP_START', 'GOLEM_SLEEP_END', 'USER_INTERESTS', 'COMMAND_WHITELIST', 'CUSTOM_COMMANDS',

@@ -315,7 +315,6 @@ export default function TerminalPage() {
                                 <div className="p-6 text-sm font-mono bg-background/50">
                                     <ul className="space-y-4">
                                         <StatusItem label="核心模擬" value={systemStatus?.runtime?.platform?.toUpperCase() || "N/A"} icon={<Cpu className="w-3 h-3" />} />
-                                        <StatusItem label="API 金鑰" value={systemStatus?.health?.keys ? "有效" : "遺失"} color={systemStatus?.health?.keys ? "primary" : "destructive"} />
                                         <StatusItem label="環境配置" value={systemStatus?.health?.env ? "已載入" : "錯誤"} color={systemStatus?.health?.env ? "primary" : "destructive"} />
                                         <StatusItem label="依賴項目" value={systemStatus?.health?.deps ? "正常" : "檢查"} color={systemStatus?.health?.deps ? "primary" : "destructive"} />
                                         <StatusItem label="核心服務" value={systemStatus?.health?.core ? "在線" : "離線"} color={systemStatus?.health?.core ? "primary" : "destructive"} />
@@ -330,29 +329,29 @@ export default function TerminalPage() {
                             <div className="bg-card border border-border rounded-2xl flex flex-col overflow-hidden shadow-sm">
                                 <PanelHeader icon={<LayoutDashboard className="w-3 h-3" />} title="快捷操作" />
                                 <div className="p-6 grid grid-cols-1 gap-4 bg-background/50">
-                                    <ActionButton 
-                                        icon={<Play className="w-5 h-5" />} 
-                                        label="啟動 Golem" 
+                                    <ActionButton
+                                        icon={<Play className="w-5 h-5" />}
+                                        label="啟動 Golem"
                                         description="初始化核心實體"
-                                        onClick={() => openConfirm("start")} 
+                                        onClick={() => openConfirm("start")}
                                         disabled={activeGolemStatus === "running" || isLoading}
-                                        color="primary" 
+                                        color="primary"
                                     />
-                                    <ActionButton 
-                                        icon={<RefreshCw className="w-5 h-5" />} 
-                                        label="重新啟動" 
+                                    <ActionButton
+                                        icon={<RefreshCw className="w-5 h-5" />}
+                                        label="重新啟動"
                                         description="Hot-reload · 自動重連"
-                                        onClick={() => openConfirm("restart")} 
+                                        onClick={() => openConfirm("restart")}
                                         disabled={!isConnected || isLoading}
-                                        color="primary" 
+                                        color="primary"
                                     />
-                                    <ActionButton 
-                                        icon={<Zap className="w-5 h-5" />} 
-                                        label="關閉 Golem" 
+                                    <ActionButton
+                                        icon={<Zap className="w-5 h-5" />}
+                                        label="關閉 Golem"
                                         description="完全停止 · 需手動重啟"
-                                        onClick={() => openConfirm("shutdown")} 
+                                        onClick={() => openConfirm("shutdown")}
                                         disabled={!isConnected || isLoading}
-                                        color="destructive" 
+                                        color="destructive"
                                     />
                                 </div>
                             </div>
@@ -404,7 +403,7 @@ export default function TerminalPage() {
                 </div>
 
             </div>
-            
+
             <SystemActionDialogs
                 confirmDialogOpen={confirmDialog.open}
                 setConfirmDialogOpen={(open) => !isLoading && setConfirmDialog(prev => ({ ...prev, open }))}
@@ -438,7 +437,7 @@ function MetricChart({ title, value, unit, history, hoveredPoint, onHover, onLea
                     {icon}
                 </div>
             </div>
-            
+
             <div className="flex-1 relative mt-1 h-[120px] group/chart">
                 {/* SVG Chart Layer */}
                 <svg className="w-full h-full overflow-visible" viewBox="0 0 1000 100" preserveAspectRatio="none" onMouseMove={onHover} onMouseLeave={onLeave}>
@@ -473,7 +472,7 @@ function MetricChart({ title, value, unit, history, hoveredPoint, onHover, onLea
 
                 {/* HTML Overlay Tooltip (Optimized Scale) */}
                 {hoveredPoint && (
-                    <div 
+                    <div
                         className="absolute pointer-events-none transition-all duration-75 z-50 flex flex-col items-center"
                         style={{
                             left: `${hoveredPoint.x / 10}%`,
@@ -515,10 +514,10 @@ function StatusItem({ label, value, color, icon }: { label: string, value: strin
                 <span className="text-muted-foreground/80 group-hover:text-muted-foreground transition-colors">{label}:</span>
             </div>
             <span className={cn(
-                "font-bold tracking-tight px-2 py-0.5 rounded text-[10px]", 
-                color === 'primary' ? "text-primary bg-primary/5" : 
-                color === 'destructive' ? "text-destructive bg-destructive/5" : 
-                "text-foreground bg-muted/30"
+                "font-bold tracking-tight px-2 py-0.5 rounded text-[10px]",
+                color === 'primary' ? "text-primary bg-primary/5" :
+                    color === 'destructive' ? "text-destructive bg-destructive/5" :
+                        "text-foreground bg-muted/30"
             )}>{value}</span>
         </li>
     );
@@ -538,8 +537,8 @@ function ActionButton({ icon, label, description, onClick, color, disabled }: { 
         >
             <div className={cn(
                 "w-12 h-12 rounded-[14px] flex items-center justify-center transition-all duration-300",
-                color === 'destructive' 
-                    ? "bg-destructive/10 text-destructive border border-destructive/20 group-hover:bg-destructive group-hover:text-white" 
+                color === 'destructive'
+                    ? "bg-destructive/10 text-destructive border border-destructive/20 group-hover:bg-destructive group-hover:text-white"
                     : "bg-white/[0.05] text-muted-foreground border border-white/[0.05] group-hover:bg-white/[0.1] group-hover:text-foreground"
             )}>
                 {icon}

@@ -16,6 +16,7 @@ describe('Package Facades', () => {
         expect(typeof memory.embeddings.EmbeddingFactory.create).toBe('function');
         expect(typeof memory.embeddings.LocalProvider).toBe('function');
         expect(typeof memory.embeddings.GeminiProvider).toBe('function');
+        expect(typeof memory.embeddings.OllamaProvider).toBe('function');
     });
 
     test('protocol facade exports expected modules', () => {

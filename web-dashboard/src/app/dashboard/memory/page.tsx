@@ -36,7 +36,7 @@ export default function MemoryPage() {
     }, [activeGolem]);
 
     const getModelDisplayName = (modelId: string, provider: string) => {
-        if (provider === 'gemini') return "Google Gemini (004)";
+        if (provider === 'ollama') return modelId || "Ollama Embedding";
         const models: Record<string, string> = {
             "Xenova/bge-small-zh-v1.5": "BGE-Small (ZH)",
             "Xenova/bge-base-zh-v1.5": "BGE-Base (ZH)",
@@ -93,9 +93,16 @@ export default function MemoryPage() {
                         <StatusCard
                             icon={Cpu}
                             title="向量模型 (Embedding)"
-                            value={getModelDisplayName(config?.golemLocalEmbeddingModel, config?.golemEmbeddingProvider)}
+                            value={getModelDisplayName(
+                                config?.golemEmbeddingProvider === 'ollama' ? config?.golemOllamaEmbeddingModel : config?.golemLocalEmbeddingModel,
+                                config?.golemEmbeddingProvider
+                            )}
                             status={status === 'ready' ? 'online' : 'loading'}
-                            description={config?.golemEmbeddingProvider === 'gemini' ? "Google 雲端模型 (Cloud-based)" : "本地 Transformers.js 推論引擎 (Local)"}
+                            description={
+                                config?.golemEmbeddingProvider === 'ollama'
+                                    ? "Ollama 本地/私有部署模型"
+                                    : "本地 Transformers.js 推論引擎 (Local)"
+                            }
                         />
                         <StatusCard
                             icon={Database}

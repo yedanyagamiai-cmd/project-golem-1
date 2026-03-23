@@ -6,7 +6,7 @@
   <p>
     <img src="https://img.shields.io/badge/Version-9.1.6-blue?style=for-the-badge" alt="Version">
     <img src="https://img.shields.io/badge/Engine-Node.js%2020-green?style=for-the-badge&logo=nodedotjs" alt="Engine">
-    <img src="https://img.shields.io/badge/Brain-Web%20Gemini-orange?style=for-the-badge&logo=google" alt="Brain">
+    <img src="https://img.shields.io/badge/Brain-Gemini%20Web%20%7C%20Ollama-orange?style=for-the-badge&logo=google" alt="Brain">
     <img src="https://img.shields.io/badge/Platform-Telegram%20%7C%20Discord-blue?style=for-the-badge" alt="Platform">
     <img src="https://img.shields.io/badge/License-MIT-red?style=for-the-badge" alt="License">
   </p>
@@ -39,14 +39,14 @@
 
 ## ✨ 這是什麼？
 
-**Project Golem** 不是一個普通的聊天機器人。它是一個以 **Web Gemini 的無限上下文**為大腦、以 **純 Playwright** 為執行引擎的自主 AI 代理系統。
+**Project Golem** 不是一個普通的聊天機器人。它是一個可選擇 **Web Gemini（Browser-in-the-Loop）** 或 **Ollama（本地/私有部署）** 作為大腦的自主 AI 代理系統。
 
 - 🧠 **記住你** — 金字塔式 5 層記憶壓縮，理論上可保存 **50 年**的對話精華。
 - 🤖 **自主行動** — 當你不在時，它會主動瀏覽新聞、自省思考、發送消息給你。
 - 🎭 **召喚 AI 團隊** — 一個指令生成多個 AI 專家進行圓桌討論，產出共識摘要。
 - 🔧 **動態擴充** — 支援熱載入技能模組 (Skills)，甚至能讓 AI 在沙盒中寫扣自學新技能。
 
-> **Browser-in-the-Loop 架構**：Golem 不依賴限制繁多的官方 API，而是直接操控瀏覽器存取 Web Gemini，享有「無限上下文視窗」與網頁視覺理解的優勢。
+> **雙後端架構**：預設可使用 Browser-in-the-Loop 直接操控 Web Gemini；也可切換到 Ollama API 走本地模型與私有部署路線。
 
 ---
 
@@ -139,11 +139,23 @@ chmod +x setup.sh
 **🔐 建議設定（純 Playwright + 安全）**
 ```env
 GOLEM_MEMORY_MODE=lancedb-pro
+GOLEM_BACKEND=gemini
+GOLEM_EMBEDDING_PROVIDER=local
 PLAYWRIGHT_STEALTH_ENABLED=true
 ALLOW_REMOTE_ACCESS=false
 # 若需要遠端管理，務必設定：
 # REMOTE_ACCESS_PASSWORD=your-strong-password
 # SYSTEM_OP_TOKEN=your-operation-token
+```
+
+**🦙 Ollama 私有化範例**
+```env
+GOLEM_BACKEND=ollama
+GOLEM_OLLAMA_BASE_URL=http://127.0.0.1:11434
+GOLEM_OLLAMA_BRAIN_MODEL=llama3.1:8b
+GOLEM_EMBEDDING_PROVIDER=ollama
+GOLEM_OLLAMA_EMBEDDING_MODEL=nomic-embed-text
+# 選填：GOLEM_OLLAMA_RERANK_MODEL=bge-reranker-v2-m3
 ```
 
 **🏗️ 架構治理檢查**
@@ -192,6 +204,7 @@ graph TD
 
 ### 🧠 技術深潛
 - **Browser-in-the-Loop**: 與傳統基於 API 的機器人不同，Golem 使用 **Playwright** 在 Web Gemini 上模擬人類行為。這提供了免費訪問 **1M+ Token 無限上下文視窗** 的能力。
+- **Ollama Local Backend**: 可切換為本地/私有部署模型，支援 `brain + embedding`，並可選填 `rerank` 模型做記憶召回重排。
 - **Reflex Shunting**: Golem 的大腦產出結構化的 `GOLEM_PROTOCOL` 指令而非純文字。這讓代理人能精準決定何時該說話、何時該記憶、以及何時該執行技能腳本。
 
 ## 🗂️ 產品級目錄分層

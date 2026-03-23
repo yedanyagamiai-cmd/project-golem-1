@@ -1,16 +1,16 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
-    Key, HardDrive, Brain, Eye, EyeOff, AlertTriangle,
+    HardDrive, Brain, AlertTriangle,
     Sparkles, ExternalLink, CheckCircle2, ArrowRight, Lock
 } from "lucide-react";
-import Link from "next/link";
 import { useGolem } from "@/components/GolemContext";
 
 type MemoryMode = "lancedb-pro";
+type BackendMode = "gemini" | "ollama";
+type EmbeddingProvider = "local" | "ollama";
 
 function normalizeMemoryMode(value: unknown): MemoryMode {
     const mode = String(value || "").trim().toLowerCase();
@@ -59,14 +59,19 @@ const LOCAL_MODELS = [
 ];
 
 export default function SystemSetupPage() {
-    const router = useRouter();
     const { isSystemConfigured } = useGolem();
 
     const [userDataDir, setUserDataDir] = useState("./golem_memory");
     const [memoryMode, setMemoryMode] = useState<MemoryMode>("lancedb-pro");
     const golemMode = "SINGLE";
-    const [embeddingProvider, setEmbeddingProvider] = useState<"gemini" | "local">("local");
+    const [backend, setBackend] = useState<BackendMode>("gemini");
+    const [embeddingProvider, setEmbeddingProvider] = useState<EmbeddingProvider>("local");
     const [localEmbeddingModel, setLocalEmbeddingModel] = useState("Xenova/bge-small-zh-v1.5");
+    const [ollamaBaseUrl, setOllamaBaseUrl] = useState("http://127.0.0.1:11434");
+    const [ollamaBrainModel, setOllamaBrainModel] = useState("llama3.1:8b");
+    const [ollamaEmbeddingModel, setOllamaEmbeddingModel] = useState("nomic-embed-text");
+    const [ollamaRerankModel, setOllamaRerankModel] = useState("");
+    const [ollamaTimeoutMs, setOllamaTimeoutMs] = useState("60000");
     const [allowRemoteAccess, setAllowRemoteAccess] = useState(false);
     const [remoteAccessPassword, setRemoteAccessPassword] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -82,8 +87,15 @@ export default function SystemSetupPage() {
             .then(data => {
                 setUserDataDir(data.userDataDir || "./golem_memory");
                 setMemoryMode(normalizeMemoryMode(data.golemMemoryMode));
-                setEmbeddingProvider(data.golemEmbeddingProvider === "gemini" ? "gemini" : "local");
+                setBackend(data.golemBackend === "ollama" ? "ollama" : "gemini");
+                if (data.golemEmbeddingProvider === "ollama") setEmbeddingProvider("ollama");
+                else setEmbeddingProvider("local");
                 setLocalEmbeddingModel(data.golemLocalEmbeddingModel || "Xenova/bge-small-zh-v1.5");
+                setOllamaBaseUrl(data.golemOllamaBaseUrl || "http://127.0.0.1:11434");
+                setOllamaBrainModel(data.golemOllamaBrainModel || "llama3.1:8b");
+                setOllamaEmbeddingModel(data.golemOllamaEmbeddingModel || "nomic-embed-text");
+                setOllamaRerankModel(data.golemOllamaRerankModel || "");
+                setOllamaTimeoutMs(String(data.golemOllamaTimeoutMs || "60000"));
                 setAllowRemoteAccess(data.allowRemoteAccess === true || data.allowRemoteAccess === "true");
             })
             .catch(console.error)
@@ -101,9 +113,15 @@ export default function SystemSetupPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     userDataDir: userDataDir.trim(),
+                    golemBackend: backend,
                     golemMemoryMode: memoryMode,
-                    golemEmbeddingProvider: "local",
+                    golemEmbeddingProvider: embeddingProvider,
                     golemLocalEmbeddingModel: localEmbeddingModel,
+                    golemOllamaBaseUrl: ollamaBaseUrl.trim(),
+                    golemOllamaBrainModel: ollamaBrainModel.trim(),
+                    golemOllamaEmbeddingModel: ollamaEmbeddingModel.trim(),
+                    golemOllamaRerankModel: ollamaRerankModel.trim(),
+                    golemOllamaTimeoutMs: ollamaTimeoutMs.trim(),
                     golemMode: golemMode,
                     allowRemoteAccess: allowRemoteAccess,
                     remoteAccessPassword: remoteAccessPassword
@@ -166,6 +184,58 @@ export default function SystemSetupPage() {
                             <h2 className="text-base font-semibold text-white">記憶引擎設定</h2>
                         </div>
 
+                        {/* Backend */}
+                        <div className="mb-5">
+                            <label className="block text-sm font-medium text-gray-400 mb-2">大腦後端 (Brain Backend)</label>
+                            <select
+                                value={backend}
+                                onChange={e => setBackend(e.target.value as BackendMode)}
+                                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all"
+                            >
+                                <option value="gemini">Web Gemini (Playwright Browser)</option>
+                                <option value="ollama">Ollama API (Local / Self-hosted)</option>
+                            </select>
+                            <p className="text-xs text-gray-600 mt-1.5">
+                                Ollama 模式不需瀏覽器登入，適合私有化部署；Gemini 模式保留 Browser-in-the-Loop。
+                            </p>
+                        </div>
+
+                        {backend === "ollama" && (
+                            <div className="mb-5 bg-blue-950/20 border border-blue-900/40 rounded-xl p-4 space-y-3">
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Ollama Base URL</label>
+                                    <input
+                                        type="text"
+                                        value={ollamaBaseUrl}
+                                        onChange={e => setOllamaBaseUrl(e.target.value)}
+                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-blue-500 transition-all"
+                                        placeholder="http://127.0.0.1:11434"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Ollama Brain Model</label>
+                                    <input
+                                        type="text"
+                                        value={ollamaBrainModel}
+                                        onChange={e => setOllamaBrainModel(e.target.value)}
+                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-blue-500 transition-all"
+                                        placeholder="llama3.1:8b"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Ollama Timeout (ms)</label>
+                                    <input
+                                        type="number"
+                                        min={1000}
+                                        value={ollamaTimeoutMs}
+                                        onChange={e => setOllamaTimeoutMs(e.target.value)}
+                                        className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-blue-500 transition-all"
+                                        placeholder="60000"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         {/* Memory Mode */}
                         <div className="mb-5">
                             <label className="block text-sm font-medium text-gray-400 mb-3">記憶引擎模式</label>
@@ -202,7 +272,7 @@ export default function SystemSetupPage() {
                                 placeholder="./golem_memory"
                             />
                             <p className="text-xs text-gray-600 mt-1.5">
-                                存放 Playwright Login Session 與長期記憶。
+                                存放 Playwright Session（若使用 Gemini）與長期記憶資料庫。
                             </p>
                         </div>
 
@@ -211,40 +281,81 @@ export default function SystemSetupPage() {
                             <div className="bg-gray-950 border border-gray-800 rounded-xl p-5 shadow-inner animate-in zoom-in-95 duration-300">
                                 <div className="flex items-center gap-2 mb-4">
                                     <Sparkles className="w-4 h-4 text-purple-400" />
-                                    <h3 className="text-sm font-semibold text-white">本地向量模型設定 (Local Embedding)</h3>
+                                    <h3 className="text-sm font-semibold text-white">向量模型設定 (Embedding)</h3>
                                 </div>
 
                                 <div className="space-y-4">
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-500 mb-2">模型選擇</label>
+                                        <label className="block text-xs font-medium text-gray-500 mb-2">提供者</label>
                                         <select
-                                            value={localEmbeddingModel}
-                                            onChange={e => setLocalEmbeddingModel(e.target.value)}
-                                            className="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-white font-mono text-sm focus:outline-none focus:border-purple-500 transition-all"
+                                            value={embeddingProvider}
+                                            onChange={e => setEmbeddingProvider(e.target.value as EmbeddingProvider)}
+                                            className="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500 transition-all"
                                         >
-                                            {LOCAL_MODELS.map(model => (
-                                                <option key={model.id} value={model.id}>{model.name}</option>
-                                            ))}
+                                            <option value="local">Local (Transformers.js)</option>
+                                            <option value="ollama">Ollama Embedding</option>
                                         </select>
                                     </div>
 
-                                    {activeModelInfo && (
-                                        <div className="bg-purple-950/20 border border-purple-900/30 rounded-lg p-3 space-y-2">
-                                            <div className="text-[11px] text-gray-300 leading-relaxed">
-                                                <span className="font-bold text-purple-400">特色：</span> {activeModelInfo.features}
+                                    {embeddingProvider === "local" && (
+                                        <>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-500 mb-2">模型選擇</label>
+                                                <select
+                                                    value={localEmbeddingModel}
+                                                    onChange={e => setLocalEmbeddingModel(e.target.value)}
+                                                    className="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-white font-mono text-sm focus:outline-none focus:border-purple-500 transition-all"
+                                                >
+                                                    {LOCAL_MODELS.map(model => (
+                                                        <option key={model.id} value={model.id}>{model.name}</option>
+                                                    ))}
+                                                </select>
                                             </div>
-                                            <div className="text-[11px] text-gray-300 leading-relaxed">
-                                                <span className="font-bold text-purple-400">推薦：</span> {activeModelInfo.recommendation}
+
+                                            {activeModelInfo && (
+                                                <div className="bg-purple-950/20 border border-purple-900/30 rounded-lg p-3 space-y-2">
+                                                    <div className="text-[11px] text-gray-300 leading-relaxed">
+                                                        <span className="font-bold text-purple-400">特色：</span> {activeModelInfo.features}
+                                                    </div>
+                                                    <div className="text-[11px] text-gray-300 leading-relaxed">
+                                                        <span className="font-bold text-purple-400">推薦：</span> {activeModelInfo.recommendation}
+                                                    </div>
+                                                    <div className="text-[10px] text-gray-500 italic pt-1 border-t border-purple-900/20">
+                                                        💡 {activeModelInfo.notes}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+
+                                    {embeddingProvider === "ollama" && (
+                                        <div className="space-y-3 bg-blue-950/20 border border-blue-900/40 rounded-lg p-3">
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-400 mb-1.5">Embedding Model</label>
+                                                <input
+                                                    type="text"
+                                                    value={ollamaEmbeddingModel}
+                                                    onChange={e => setOllamaEmbeddingModel(e.target.value)}
+                                                    className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-blue-500 transition-all"
+                                                    placeholder="nomic-embed-text"
+                                                />
                                             </div>
-                                            <div className="text-[10px] text-gray-500 italic pt-1 border-t border-purple-900/20">
-                                                💡 {activeModelInfo.notes}
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-400 mb-1.5">Rerank Model (選填)</label>
+                                                <input
+                                                    type="text"
+                                                    value={ollamaRerankModel}
+                                                    onChange={e => setOllamaRerankModel(e.target.value)}
+                                                    className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-blue-500 transition-all"
+                                                    placeholder="bge-reranker-v2-m3 (optional)"
+                                                />
                                             </div>
+                                            <p className="text-[10px] text-blue-200/70 leading-relaxed">
+                                                若填寫 rerank 模型，查詢結果會在向量召回後再重排；若空白則維持原始 hybrid ranking。
+                                            </p>
                                         </div>
                                     )}
 
-                                    <p className="text-[10px] text-gray-600 leading-relaxed">
-                                        模型將在第一次啟動時自動下載至本地端。具備極佳隱私性與回應速度。
-                                    </p>
                                 </div>
                             </div>
                         )}

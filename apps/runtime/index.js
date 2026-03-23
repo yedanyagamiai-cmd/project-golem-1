@@ -427,9 +427,12 @@ async function handleUnifiedMessage(ctx, forceTargetId = null) {
     if (ctx.isAdmin && ctx.text && ctx.text.trim().toLowerCase() === '/new') {
         await ctx.reply("🔄 收到 /new 指令！正在為您開啟全新的大腦對話神經元...");
         try {
-            if (brain.page) {
+            const isOllamaBackend = brain.backend === 'ollama';
+            if (brain.page || isOllamaBackend) {
                 await brain.init(true);
-                await ctx.reply("✅ 物理重置完成！已經為您切斷舊有記憶，現在這是一個全新且乾淨的 Golem 實體。");
+                await ctx.reply(isOllamaBackend
+                    ? "✅ Ollama 對話狀態已重置完成！目前大腦記憶脈絡已重新注入。"
+                    : "✅ 物理重置完成！已經為您切斷舊有記憶，現在這是一個全新且乾淨的 Golem 實體。");
             } else {
                 await ctx.reply("⚠️ 找不到活躍的網頁視窗，無法執行物理重置。");
             }
@@ -445,9 +448,12 @@ async function handleUnifiedMessage(ctx, forceTargetId = null) {
             if (brain.memoryDriver && typeof brain.memoryDriver.clearMemory === 'function') {
                 await brain.memoryDriver.clearMemory();
             }
-            if (brain.page) {
+            const isOllamaBackend = brain.backend === 'ollama';
+            if (brain.page || isOllamaBackend) {
                 await brain.init(true);
-                await ctx.reply("✅ 記憶庫 DB 已徹底清空格式化！網頁也已重置，這是一個 100% 空白、無任何歷史包袱的 Golem 實體。");
+                await ctx.reply(isOllamaBackend
+                    ? "✅ 記憶庫 DB 已清空，且 Ollama 大腦脈絡已重新初始化完成。"
+                    : "✅ 記憶庫 DB 已徹底清空格式化！網頁也已重置，這是一個 100% 空白、無任何歷史包袱的 Golem 實體。");
             } else {
                 await ctx.reply("⚠️ 找不到活躍的網頁視窗。");
             }
