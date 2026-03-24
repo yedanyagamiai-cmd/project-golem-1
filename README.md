@@ -136,6 +136,18 @@ chmod +x setup.sh
 ./setup.sh --start
 ```
 
+**🖥️ VPS / 無桌面環境（Headless + noVNC）**
+```bash
+# Docker 一鍵安裝部署（含 noVNC）
+./setup.sh --deploy-docker
+
+# Linux 本機一鍵安裝部署（含 noVNC）
+./setup.sh --deploy-linux
+
+# 停止 headless 服務
+./setup.sh --headless-stop
+```
+
 **🔐 建議設定（純 Playwright + 安全）**
 ```env
 GOLEM_MEMORY_MODE=lancedb-pro
@@ -288,6 +300,7 @@ DIARY_BACKUP_RETENTION_DAYS=180
 | [🏗️ 架構治理規範](infra/architecture/README.md) | 分層邊界規則與 `arch:check` 自動檢查 |
 | [🔌 MCP 使用與開發指南](docs/MCP-使用與開發指南.md) | **[最新]** 如何安裝、配置與調用 MCP Server (含 Hacker News 範例) |
 | [🧠 記憶系統架構說明](docs/記憶系統架構說明.md) | 金字塔壓縮原理與存放路徑解析 |
+| [🖥️ VPS Headless + VNC 指南](docs/VPS_VNC_Setup_Guide.md) | 無桌面 Linux / Docker 的 noVNC 一鍵部署 |
 | [🖥️ Web Dashboard 使用說明](docs/Web-Dashboard-使用說明.md) | Web UI 各個分頁的延伸細節 |
 | [🛠️ 開發者實作指南](docs/開發者實作指南.md) | 如何實作新的 Skill 與 Golem Protocol 格式規範 |
 | [🎮 完整指令說明一覽表](docs/golem指令說明一覽表.md) | Telegram / Discord 指令速查 |
