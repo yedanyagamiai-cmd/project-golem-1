@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, Users, Globe, ChevronLeft, ChevronRight, Terminal, BrainCircuit, BookOpen, Settings, User, MessageSquare, Plug, BookHeart } from "lucide-react";
+import { LayoutDashboard, Users, Globe, ChevronLeft, ChevronRight, Terminal, BrainCircuit, BookOpen, Settings, User, MessageSquare, Plug, BookHeart, Library, Activity } from "lucide-react";
 import { GolemProvider, useGolem } from "@/components/GolemContext";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { BootScreen } from "@/components/BootScreen";
@@ -21,6 +21,8 @@ function DashboardSidebar({
 
     const navItems = [
         { name: "直接交談", href: "/dashboard/chat", icon: MessageSquare },
+        { name: "Prompt 指令池", href: "/dashboard/prompt-pool", icon: Library },
+        { name: "Prompt 趨勢", href: "/dashboard/prompt-trends", icon: Activity },
         { name: "技能說明書", href: "/dashboard/skills", icon: BookOpen },
         { name: "羈絆日記", href: "/dashboard/diary", icon: BookHeart },
         { name: "MCP 工具", href: "/dashboard/mcp", icon: Plug },

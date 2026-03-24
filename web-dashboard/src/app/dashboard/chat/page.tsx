@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback, DragEvent, ClipboardEvent } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, DragEvent, ClipboardEvent } from "react";
 import { useGolem } from "@/components/GolemContext";
 import { socket } from "@/lib/socket";
 import { User, Bot, Send, X, FileText, Paperclip, UploadCloud } from "lucide-react";
@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { Typewriter } from "@/components/Typewriter";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { apiGet, apiPost } from "@/lib/api-client";
+import { apiGet, apiPost, apiPostWrite } from "@/lib/api-client";
 
 interface ChatMessage {
     id: string;
@@ -35,6 +35,40 @@ interface CommandItem {
     command: string;
     description: string;
     options?: CommandOption[];
+}
+
+interface PromptShortcutItem {
+    id: string;
+    shortcut: string;
+    prompt: string;
+    note?: string;
+    recentUseCount?: number;
+    lastUsedAt?: string;
+}
+
+interface PromptPoolResponse {
+    success?: boolean;
+    items?: PromptShortcutItem[];
+    topUsedShortcuts?: Array<{
+        id: string;
+        shortcut: string;
+        note?: string;
+        recentUseCount?: number;
+        lastUsedAt?: string;
+    }>;
+}
+
+interface SuggestionItem {
+    key: string;
+    command: string;
+    description: string;
+    source: "command" | "prompt";
+    injectedPrompt?: string;
+}
+
+interface InjectedShortcutCandidate {
+    shortcut: string;
+    seedPrompt: string;
 }
 
 interface ChatActionButton {
@@ -82,6 +116,14 @@ function extractGolemReplyOnly(rawText: string): string {
     return cleaned;
 }
 
+function normalizeShortcutKey(input: string): string {
+    return String(input || "")
+        .trim()
+        .replace(/^((?:\/)?[a-z0-9_]{1,32})@[a-z0-9_]{3,}$/i, "$1")
+        .toLowerCase()
+        .replace(/^\/+/, "");
+}
+
 export default function DirectChatPage() {
     const { activeGolem } = useGolem();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -92,8 +134,30 @@ export default function DirectChatPage() {
     const [isDragging, setIsDragging] = useState(false);
     // Command suggestions state
     const [showSuggestions, setShowSuggestions] = useState(false);
-    const [filteredCommands, setFilteredCommands] = useState<CommandItem[]>([]);
+    const [filteredCommands, setFilteredCommands] = useState<SuggestionItem[]>([]);
     const [allCommands, setAllCommands] = useState<CommandItem[]>([]);
+    const [promptShortcuts, setPromptShortcuts] = useState<PromptShortcutItem[]>([]);
+    const [injectedShortcutCandidate, setInjectedShortcutCandidate] = useState<InjectedShortcutCandidate | null>(null);
+
+    const systemCommandSet = useMemo(() => {
+        const set = new Set<string>();
+        for (const item of allCommands) {
+            const command = normalizeShortcutKey(String(item.command || ""));
+            if (command) set.add(command);
+        }
+        return set;
+    }, [allCommands]);
+
+    const promptShortcutMap = useMemo(() => {
+        const map = new Map<string, PromptShortcutItem>();
+        for (const item of promptShortcuts) {
+            const key = normalizeShortcutKey(item.shortcut);
+            if (key && !map.has(key)) {
+                map.set(key, item);
+            }
+        }
+        return map;
+    }, [promptShortcuts]);
 
     useEffect(() => {
         const fetchCommands = async () => {
@@ -101,13 +165,31 @@ export default function DirectChatPage() {
                 const data = await apiGet<{ success?: boolean; commands?: CommandItem[] }>("/api/commands");
                 if (data.success && data.commands) {
                     setAllCommands(data.commands);
-                    setFilteredCommands(data.commands);
                 }
             } catch (err) {
                 console.error("Failed to fetch commands:", err);
             }
         };
         fetchCommands();
+    }, []);
+
+    useEffect(() => {
+        const fetchPromptPool = async () => {
+            try {
+                const data = await apiGet<PromptPoolResponse>("/api/prompt-pool");
+                if (Array.isArray(data.items)) {
+                    const sortedByUsage = [...data.items].sort((a, b) => {
+                        const countDiff = Number(b.recentUseCount || 0) - Number(a.recentUseCount || 0);
+                        if (countDiff !== 0) return countDiff;
+                        return String(a.shortcut || "").localeCompare(String(b.shortcut || ""));
+                    });
+                    setPromptShortcuts(sortedByUsage);
+                }
+            } catch (err) {
+                console.error("Failed to fetch prompt pool:", err);
+            }
+        };
+        fetchPromptPool();
     }, []);
     const [suggestionIndex, setSuggestionIndex] = useState(0);
     const suggestionListRef = useRef<HTMLDivElement>(null);
@@ -298,6 +380,11 @@ export default function DirectChatPage() {
         }
     }, [suggestionIndex, showSuggestions]);
 
+    useEffect(() => {
+        if (suggestionIndex < filteredCommands.length) return;
+        setSuggestionIndex(0);
+    }, [filteredCommands.length, suggestionIndex]);
+
     const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.stopPropagation();
@@ -349,8 +436,36 @@ export default function DirectChatPage() {
     const handleSend = async () => {
         if ((!input.trim() && !selectedFile) || !activeGolem) return;
 
-        const val = input.trim();
+        const rawVal = input.trim();
+        const shortcutCandidate = injectedShortcutCandidate;
+        const expansion = (() => {
+            if (!rawVal) return "";
+            const tokens = rawVal.split(/\s+/);
+            const firstToken = tokens[0] || "";
+            const firstTokenKey = normalizeShortcutKey(firstToken);
+            const matched = firstTokenKey ? promptShortcutMap.get(firstTokenKey) : undefined;
+            if (firstToken.startsWith('/') && firstTokenKey && systemCommandSet.has(firstTokenKey)) {
+                return { text: rawVal, matchedShortcut: "" };
+            }
+            if (!matched) return { text: rawVal, matchedShortcut: "" };
+            const rest = tokens.slice(1).join(" ").trim();
+            if (!rest) return { text: matched.prompt, matchedShortcut: matched.shortcut };
+            return { text: `${matched.prompt}\n${rest}`, matchedShortcut: matched.shortcut };
+        })();
+        const val = typeof expansion === "string" ? expansion : expansion.text;
+        const matchedShortcut = typeof expansion === "string" ? "" : expansion.matchedShortcut;
+        const fallbackShortcut = (() => {
+            if (matchedShortcut) return "";
+            if (!shortcutCandidate) return "";
+            const seedPrompt = String(shortcutCandidate.seedPrompt || "").trim();
+            if (!seedPrompt) return "";
+            const inputForCheck = rawVal.trimStart();
+            if (!inputForCheck.startsWith(seedPrompt)) return "";
+            return String(shortcutCandidate.shortcut || "").trim();
+        })();
+        const trackShortcut = matchedShortcut || fallbackShortcut;
         setInput("");
+        setInjectedShortcutCandidate(null);
         setShowSuggestions(false);
         setIsSending(true);
 
@@ -377,6 +492,16 @@ export default function DirectChatPage() {
                 message: val,
                 attachment: attachmentInfo
             });
+
+            if (trackShortcut) {
+                apiPostWrite("/api/prompt-pool/track-use", {
+                    shortcut: trackShortcut,
+                    source: "web_dashboard",
+                    platform: "web",
+                }).catch((trackErr) => {
+                    console.warn("Failed to track prompt shortcut usage:", trackErr);
+                });
+            }
         } catch (e) {
             console.error("Failed to send message:", e);
         } finally {
@@ -384,48 +509,125 @@ export default function DirectChatPage() {
         }
     };
 
-    const handleCommandClick = (cmd: string) => {
-        setInput(cmd + " ");
+    const handleCommandClick = (item: SuggestionItem) => {
+        if (item.source === "prompt") {
+            const injectedPrompt = item.injectedPrompt || "";
+            setInput(injectedPrompt);
+            setInjectedShortcutCandidate({
+                shortcut: item.command,
+                seedPrompt: injectedPrompt,
+            });
+        } else {
+            setInput(item.command + " ");
+            setInjectedShortcutCandidate(null);
+        }
         setShowSuggestions(false);
     };
 
     const onInputChange = (val: string) => {
-        setInput(val);
-        if (val.startsWith('/')) {
-            const parts = val.split(/\s+/);
-            const cmdName = parts[0];
-            const arg = parts.length > 1 ? parts[1] : '';
+        const raw = String(val || "");
+        const trimmed = raw.trim();
 
-            // 如果有完全符合的頂層指令，且該指令有選項，且使用者已經輸入了空格
-            const exactCmd = allCommands.find(c => c.command.toLowerCase() === cmdName.toLowerCase());
+        if (!trimmed) {
+            setInput(raw);
+            setInjectedShortcutCandidate(null);
+            setShowSuggestions(false);
+            return;
+        }
 
-            if (exactCmd && exactCmd.options && val.includes(' ')) {
-                // 顯示選項
+        const parts = trimmed.split(/\s+/);
+        const token = parts[0] || "";
+        const hasSpace = /\s/.test(trimmed);
+        const tokenKey = normalizeShortcutKey(token);
+        const exactPromptShortcut = (() => {
+            const matched = promptShortcutMap.get(tokenKey);
+            if (!matched) return undefined;
+            if (token.startsWith('/') && tokenKey && systemCommandSet.has(tokenKey)) {
+                return undefined;
+            }
+            return matched;
+        })();
+
+        // 只輸入快捷指令後按空白，直接注入 prompt 到對話框輸入區
+        if (exactPromptShortcut && /\s$/.test(raw) && parts.length === 1) {
+            const injectedPrompt = `${exactPromptShortcut.prompt} `;
+            setInput(injectedPrompt);
+            setInjectedShortcutCandidate({
+                shortcut: exactPromptShortcut.shortcut,
+                seedPrompt: exactPromptShortcut.prompt,
+            });
+            setShowSuggestions(false);
+            return;
+        }
+
+        setInput(raw);
+        if (injectedShortcutCandidate) {
+            const seedPrompt = String(injectedShortcutCandidate.seedPrompt || "").trim();
+            const inputForCheck = raw.trimStart();
+            if (!seedPrompt || !inputForCheck.startsWith(seedPrompt)) {
+                setInjectedShortcutCandidate(null);
+            }
+        }
+
+        const promptSuggestions: SuggestionItem[] = !hasSpace
+            ? promptShortcuts
+                .filter((item) => {
+                    const shortcutKey = normalizeShortcutKey(item.shortcut);
+                    if (String(item.shortcut || "").startsWith('/') && systemCommandSet.has(shortcutKey)) {
+                        return false;
+                    }
+                    return shortcutKey.includes(tokenKey);
+                })
+                .slice(0, 20)
+                .map((item) => ({
+                    key: `prompt-${item.id}`,
+                    command: item.shortcut,
+                    description: item.note || item.prompt.replace(/\s+/g, " ").slice(0, 80) || "從指令池注入 Prompt",
+                    source: "prompt",
+                    injectedPrompt: item.prompt,
+                }))
+            : [];
+
+        const commandSuggestions: SuggestionItem[] = [];
+        if (token.startsWith('/')) {
+            const exactCmd = allCommands.find((c) => normalizeShortcutKey(c.command) === tokenKey);
+
+            if (exactCmd && exactCmd.options && raw.includes(' ')) {
+                const arg = parts.length > 1 ? parts[1] : '';
                 let options = exactCmd.options;
-                
-                // 動態加入目前的 Golem 作為選項 (針對需要 @username 的指令)
-                if (options.some(o => o.name === '@username') && activeGolem) {
+
+                if (options.some((o) => o.name === '@username') && activeGolem) {
                     const dynamicOption = { name: `@${activeGolem}`, description: `針對目前的 ${activeGolem} 執行` };
-                    options = [dynamicOption, ...options.filter(o => o.name !== '@username')];
+                    options = [dynamicOption, ...options.filter((o) => o.name !== '@username')];
                 }
 
-                const filteredOptions = options.filter(opt => opt.name.toLowerCase().includes(arg.toLowerCase()));
-                setFilteredCommands(filteredOptions.map(opt => ({
+                const filteredOptions = options
+                    .filter((opt) => opt.name.toLowerCase().includes(arg.toLowerCase()))
+                    .slice(0, 20);
+
+                commandSuggestions.push(...filteredOptions.map((opt) => ({
+                    key: `cmd-option-${exactCmd.command}-${opt.name}`,
                     command: `${exactCmd.command} ${opt.name}`,
-                    description: opt.description
+                    description: opt.description,
+                    source: "command" as const,
                 })));
-                setShowSuggestions(filteredOptions.length > 0);
-            } else {
-                // 顯示頂層指令
-                const filtered = allCommands.filter(c => c.command.toLowerCase().includes(cmdName.toLowerCase()));
-                setFilteredCommands(filtered);
-                // 只有在還沒輸入空格時才顯示頂層指令列表
-                setShowSuggestions(filtered.length > 0 && !val.includes(' '));
+            } else if (!raw.includes(' ')) {
+                const filtered = allCommands
+                    .filter((c) => normalizeShortcutKey(c.command).includes(tokenKey))
+                    .slice(0, 20);
+                commandSuggestions.push(...filtered.map((cmd) => ({
+                    key: `cmd-${cmd.command}`,
+                    command: cmd.command,
+                    description: cmd.description,
+                    source: "command" as const,
+                })));
             }
-            setSuggestionIndex(0);
-        } else {
-            setShowSuggestions(false);
         }
+
+        const nextSuggestions = [...promptSuggestions, ...commandSuggestions];
+        setFilteredCommands(nextSuggestions);
+        setShowSuggestions(nextSuggestions.length > 0);
+        setSuggestionIndex(0);
     };
 
     return (
@@ -578,8 +780,8 @@ export default function DirectChatPage() {
                             <div className="p-2 space-y-1">
                                 {filteredCommands.map((cmd, idx) => (
                                     <button
-                                        key={cmd.command}
-                                        onClick={() => handleCommandClick(cmd.command)}
+                                        key={cmd.key}
+                                        onClick={() => handleCommandClick(cmd)}
                                         onMouseEnter={() => setSuggestionIndex(idx)}
                                         className={cn(
                                             "w-full text-left p-2 rounded-lg transition-all duration-150 group",
@@ -593,7 +795,10 @@ export default function DirectChatPage() {
                                             )}>
                                                 {cmd.command}
                                             </span>
-                                            <span className="text-[10px] text-muted-foreground line-clamp-1 group-hover:line-clamp-none">
+                                            <span className="text-[10px] text-muted-foreground/80">
+                                                {cmd.source === "prompt" ? "Prompt 指令池" : "系統指令"}
+                                            </span>
+                                            <span className="text-[10px] text-muted-foreground line-clamp-1 group-hover:line-clamp-none mt-0.5">
                                                 {cmd.description}
                                             </span>
                                         </div>
@@ -664,6 +869,10 @@ export default function DirectChatPage() {
                                 onChange={(e) => onInputChange(e.target.value)}
                                 onKeyDown={(e) => {
                                     if (showSuggestions) {
+                                        if (filteredCommands.length === 0) {
+                                            setShowSuggestions(false);
+                                            return;
+                                        }
                                         if (e.key === 'ArrowDown') {
                                             e.preventDefault();
                                             setSuggestionIndex((prev) => (prev + 1) % filteredCommands.length);
@@ -676,7 +885,7 @@ export default function DirectChatPage() {
                                         }
                                         if (e.key === 'Enter' || e.key === 'Tab') {
                                             e.preventDefault();
-                                            handleCommandClick(filteredCommands[suggestionIndex].command);
+                                            handleCommandClick(filteredCommands[suggestionIndex]);
                                             return;
                                         }
                                         if (e.key === 'Escape') {
@@ -687,6 +896,26 @@ export default function DirectChatPage() {
                                     }
 
                                     if (e.key === 'Enter' && !e.shiftKey) {
+                                        const rawInput = input.trim();
+                                        if (rawInput) {
+                                            const maybeShortcut = rawInput.split(/\s+/)[0].toLowerCase();
+                                            if (maybeShortcut.startsWith('/') && systemCommandSet.has(maybeShortcut)) {
+                                                e.preventDefault();
+                                                handleSend();
+                                                return;
+                                            }
+                                            const shortcutItem = promptShortcutMap.get(maybeShortcut);
+                                            if (shortcutItem && rawInput.toLowerCase() === maybeShortcut) {
+                                                e.preventDefault();
+                                                setInput(shortcutItem.prompt);
+                                                setInjectedShortcutCandidate({
+                                                    shortcut: shortcutItem.shortcut,
+                                                    seedPrompt: shortcutItem.prompt,
+                                                });
+                                                setShowSuggestions(false);
+                                                return;
+                                            }
+                                        }
                                         e.preventDefault();
                                         handleSend();
                                     }
