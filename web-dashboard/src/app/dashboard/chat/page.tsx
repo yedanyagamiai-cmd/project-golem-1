@@ -537,12 +537,14 @@ export default function DirectChatPage() {
 
         const parts = trimmed.split(/\s+/);
         const token = parts[0] || "";
+        const startsWithSlash = token.startsWith('/');
         const hasSpace = /\s/.test(trimmed);
         const tokenKey = normalizeShortcutKey(token);
         const exactPromptShortcut = (() => {
+            if (!startsWithSlash) return undefined;
             const matched = promptShortcutMap.get(tokenKey);
             if (!matched) return undefined;
-            if (token.startsWith('/') && tokenKey && systemCommandSet.has(tokenKey)) {
+            if (tokenKey && systemCommandSet.has(tokenKey)) {
                 return undefined;
             }
             return matched;
@@ -569,7 +571,7 @@ export default function DirectChatPage() {
             }
         }
 
-        const promptSuggestions: SuggestionItem[] = !hasSpace
+        const promptSuggestions: SuggestionItem[] = !hasSpace && startsWithSlash
             ? promptShortcuts
                 .filter((item) => {
                     const shortcutKey = normalizeShortcutKey(item.shortcut);
@@ -589,7 +591,7 @@ export default function DirectChatPage() {
             : [];
 
         const commandSuggestions: SuggestionItem[] = [];
-        if (token.startsWith('/')) {
+        if (startsWithSlash) {
             const exactCmd = allCommands.find((c) => normalizeShortcutKey(c.command) === tokenKey);
 
             if (exactCmd && exactCmd.options && raw.includes(' ')) {
